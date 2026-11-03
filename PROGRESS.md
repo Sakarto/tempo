@@ -15,7 +15,7 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 ### 2026-11-03 — F04: Parsers (.ics, CSV time log)
 - Did: `src/core/ics.ts`, `src/core/csvlog.ts`
 - Evidence: `npm test` 36 pass (also under TZ=America/Chicago, Asia/Kolkata); typecheck/lint/build/audit/guard clean
-- Review: 1 cycle, reviewer found 2 must-fix (unterminated quote lost later rows; 2026-02-31 accepted) + should-fix (VALARM overwrite, CANCELLED, RRULE silent, DURATION, bad dates, case, huge numbers); all fixed with tests. Not re-reviewed after fixes.
+- Review: 1 cycle, reviewer found 2 must-fix (unterminated quote lost later rows; 2026-02-31 accepted) + should-fix (VALARM overwrite, CANCELLED, RRULE silent, DURATION, bad dates, case, huge numbers); all fixed with tests. Cycle 2: reviewer found 3 must-fix (DST DURATION end, duplicate-id collisions, stray quotes mid-field/recursion) + unclosed events + P1W; all fixed with tests. Not re-reviewed after cycle-2 fixes (cap reached by design: further cycles would be a third).
 - Noticed, not touched: CSV export must escape cells starting with = + - @ (do in F11); DST gap times (02:30) untested; recurring events are reported, not expanded
 - Next: F05 IndexedDB persistence
 

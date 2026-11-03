@@ -72,3 +72,30 @@ describe('parseIcs real-world exports', () => {
     expect(new Set(dup.events.map((x) => x.id)).size).toBe(2)
   })
 })
+
+describe('parseIcs second-review fixes', () => {
+  const d = '2026-11-03'
+  const e = (x: string) => wrap(ev(`UID:u\r\nSUMMARY:S\r\n${x}`))
+  test('DURATION uses wall-clock time on DST days', () => {
+    for (const tz of ['America/New_York', 'UTC']) {
+      process.env.TZ = tz
+      const r = parseIcs(e('DTSTART:20260308T080000\r\nDURATION:PT1H\r\n'), '2026-03-08')
+      expect(r.events[0]).toMatchObject({ start: 480, end: 540 })
+    }
+    delete process.env.TZ
+  })
+  test('weeks, and empty durations are skipped', () => {
+    expect(parseIcs(e('DTSTART:20261103T090000\r\nDURATION:P1W\r\n'), d).errors).toEqual([])
+    expect(parseIcs(e('DTSTART:20261103T100000\r\nDURATION:PT\r\n'), d).events).toEqual([])
+  })
+  test('three duplicate uids get three distinct ids', () => {
+    const one = 'UID:a\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\n'
+    const r = parseIcs(wrap(ev(one) + ev(one) + ev(one) + ev('UID:a#2\r\nDTSTART:20261103T120000\r\nDTEND:20261103T130000\r\n')), d)
+    expect(new Set(r.events.map((x) => x.id)).size).toBe(4)
+  })
+  test('unclosed events are reported', () => {
+    expect(parseIcs(wrap('BEGIN:VEVENT\r\nUID:z\r\nDTSTART:20261103T100000\r\n'), d).errors[0]).toMatch(/missing END/)
+    const alarm = 'BEGIN:VEVENT\r\nUID:y\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\nBEGIN:VALARM\r\nEND:VEVENT\r\n'
+    expect(parseIcs(wrap(alarm + ev('UID:w\r\nDTSTART:20261103T120000\r\nDTEND:20261103T130000\r\n')), d).events.map((x) => x.id)).toEqual(['y', 'w'])
+  })
+})

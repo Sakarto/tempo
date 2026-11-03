@@ -19,7 +19,7 @@ function parseDateTime(value: string): { date: string; minute: number; dayStart:
 }
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
-const DURATION = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/i
+const DURATION = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/i
 
 const unescapeText = (s: string) => s.replace(/\\([,;nN\\])/g, (_, c: string) => (c === 'n' || c === 'N' ? ' ' : c))
 
@@ -39,9 +39,12 @@ export function parseIcs(text: string, date: string): IcsResult {
   for (const raw of lines) {
     const line = raw.trim()
     const upper = line.toUpperCase()
-    if (upper === 'BEGIN:VEVENT') { cur = {}; depth = 0; count++; continue }
-    if (cur && upper.startsWith('BEGIN:')) { depth++; continue }
-    if (cur && depth > 0) { if (upper.startsWith('END:')) depth--; continue }
+    if (upper === 'BEGIN:VEVENT') {
+      if (cur) errors.push(`Event ${cur.UID ?? count} is missing END:VEVENT`)
+      cur = {}; depth = 0; count++; continue
+    }
+    if (cur && upper !== 'END:VEVENT' && upper.startsWith('BEGIN:')) { depth++; continue }
+    if (cur && depth > 0 && upper !== 'END:VEVENT') { if (upper.startsWith('END:')) depth--; continue }
     if (upper === 'END:VEVENT' && cur) {
       const fields = cur
       cur = null
@@ -53,8 +56,10 @@ export function parseIcs(text: string, date: string): IcsResult {
       let e = parseDateTime(fields.DTEND ?? '')
       const dur = DURATION.exec(fields.DURATION ?? '')
       if (s && !e && dur) {
-        const total = Number(dur[1] ?? 0) * 1440 + Number(dur[2] ?? 0) * 60 + Number(dur[3] ?? 0)
-        const endDate = new Date(s.dayStart + (s.minute + total) * 60_000)
+        const total = Number(dur[1] ?? 0) * 10080 + Number(dur[2] ?? 0) * 1440 + Number(dur[3] ?? 0) * 60 + Number(dur[4] ?? 0)
+        // Wall-clock arithmetic via the local constructor so DST days don't shift the end.
+        const base = new Date(s.dayStart)
+        const endDate = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, s.minute + total)
         e = { date: '', minute: endDate.getHours() * 60 + endDate.getMinutes(), dayStart: new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime() }
       }
       if (!s || !e) { errors.push(`Event ${id}: unreadable DTSTART/DTEND`); continue }
@@ -63,7 +68,8 @@ export function parseIcs(text: string, date: string): IcsResult {
       const clampedStart = Math.max(start, 0)
       const clampedEnd = Math.min(end, 1440)
       if (clampedEnd <= clampedStart) continue
-      if (seen.has(id)) id = `${id}@${clampedStart}`
+      const base = id
+      for (let n = 1; seen.has(id); ) id = `${base}#${++n}`
       seen.add(id)
       events.push({ id, title: unescapeText(fields.SUMMARY ?? '(no title)'), start: clampedStart, end: clampedEnd })
       continue
@@ -79,6 +85,7 @@ export function parseIcs(text: string, date: string): IcsResult {
     } else if (key === 'RRULE') cur.RRULE = line.slice(colon + 1)
     else if (key === 'UID' || key === 'SUMMARY' || key === 'STATUS' || key === 'DURATION') cur[key] = line.slice(colon + 1)
   }
+  if (cur) errors.push(`Event ${cur.UID ?? count} is missing END:VEVENT`)
   if (count === 0) return { events: [], errors: ['No VEVENT found'] }
   return { events, errors }
 }

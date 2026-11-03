@@ -51,3 +51,18 @@ describe('parseTimeLog robustness', () => {
     expect(r.errors).toHaveLength(2)
   })
 })
+
+describe('parseTimeLog stray quotes', () => {
+  test('stray and repeated unterminated quotes never swallow good rows', () => {
+    const r = parseTimeLog(`${H}\n2026-01-01,"a,c,1,1,0,no,3,x\n2026-01-01,a,c,10,10,0,no,3,x\n2026-01-01,"b,c,1,1,0,no,3,x\n2026-01-01,b,c,10,10,0,no,3,x\n2026-01-01,t",c,5,5,0,no,3,x`)
+    expect(r.sessions.map((s) => s.task)).toEqual(['a', 'b', 't"'])
+    expect(r.errors.map((e) => e.line)).toEqual([2, 4])
+  })
+  test('many stray quotes finish quickly', () => {
+    const rows = Array.from({ length: 20000 }, (_, i) => `2026-01-01,"t${i},c,1,1,0,no,3,x`).join('\n')
+    const t0 = Date.now()
+    const r = parseTimeLog(`${H}\n${rows}`)
+    expect(r.errors).toHaveLength(20000)
+    expect(Date.now() - t0).toBeLessThan(5000)
+  })
+})

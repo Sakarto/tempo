@@ -7,39 +7,67 @@ export interface TimeLogResult { sessions: LoggedSession[]; errors: { line: numb
 
 export const TIME_LOG_HEADER = ['date', 'task', 'category', 'estimate_min', 'actual_min', 'extended_min', 'distracted', 'energy_1to5', 'note']
 
-/** RFC 4180-style records with the line each starts on. Quoted fields may contain commas, quotes and newlines. */
+// A quoted field whose next line looks like a new record ("2026-01-01,") is treated as an unterminated quote.
+const ROW_START = /\d{4}-\d{2}-\d{2},/y
+const MAX_QUOTED = 5000 // a quoted field longer than this is treated as an unterminated quote (bounds rescans)
+
+/**
+ * RFC 4180-style records with the line each starts on. Quoted fields may contain commas, quotes and newlines.
+ * A quote only opens a field at its start and only closes when followed by , or end of line; otherwise it is literal.
+ * An unterminated quote yields a marker record, then parsing resumes on the line after it so later rows still import.
+ */
 function records(text: string): { line: number; cells: string[] }[] {
   const out: { line: number; cells: string[] }[] = []
   let cells: string[] = []
   let cell = ''
   let quoted = false
+  let quoteStart = 0
   let line = 1
   let startLine = 1
+  let recordStart = 0
   const endRecord = () => {
     cells.push(cell)
     if (cells.length > 1 || cells[0].trim() !== '') out.push({ line: startLine, cells })
     cells = []; cell = ''
   }
-  for (let i = 0; i < text.length; i++) {
-    const c = text[i]
-    if (quoted) {
-      if (c === '"' && text[i + 1] === '"') { cell += '"'; i++ }
-      else if (c === '"') quoted = false
-      else { if (c === '\n') line++; cell += c }
-    } else if (c === '"') quoted = true
-    else if (c === ',') { cells.push(cell); cell = '' }
-    else if (c === '\r') continue
-    else if (c === '\n') { endRecord(); line++; startLine = line }
-    else cell += c
+  let i = 0
+  const run = () => {
+    for (; i < text.length; i++) {
+      const c = text[i]
+      if (quoted) {
+        const next = text[i + 1]
+        if (c === '"' && next === '"') { cell += '"'; i++ }
+        else if (c === '"' && (next === undefined || next === ',' || next === '\n' || next === '\r')) quoted = false
+        else {
+          if (c === '\n') {
+            ROW_START.lastIndex = i + 1
+            if (ROW_START.test(text)) { i = restart(); continue }
+            line++
+          }
+          cell += c
+          if (i - quoteStart > MAX_QUOTED) i = restart()
+        }
+      } else if (c === '"' && cell === '') { quoted = true; quoteStart = i }
+      else if (c === ',') { cells.push(cell); cell = '' }
+      else if (c === '\r') continue
+      else if (c === '\n') { endRecord(); line++; startLine = line; recordStart = i + 1 }
+      else cell += c
+    }
   }
-  if (quoted) {
-    // Unterminated quote: report it and re-parse everything after its line so later rows still import.
-    const lines = text.split('\n')
-    out.push({ line: startLine, cells: ['\0unterminated'] })
-    return out.concat(records(lines.slice(startLine).join('\n')).map((r) => ({ ...r, line: r.line + startLine })))
-  }
+  run()
+  while (quoted) { i = restart() + 1; run() }
   endRecord()
   return out
+
+  /** Report the open quote and resume at the line after the record start; returns the index to continue from. */
+  function restart(): number {
+    out.push({ line: startLine, cells: ['\0unterminated'] })
+    const nl = text.indexOf('\n', recordStart)
+    quoted = false; cells = []; cell = ''
+    if (nl < 0) { recordStart = text.length; return text.length }
+    line = startLine + 1; startLine = line; recordStart = nl + 1
+    return nl // loop's i++ moves to nl+1
+  }
 }
 
 const nonNegInt = (s: string) => (/^\d+$/.test(s.trim()) && Number.isSafeInteger(Number(s)) ? Number(s) : null)
