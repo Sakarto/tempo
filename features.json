@@ -34,7 +34,7 @@
         "With 3 sessions of ratios 1.5,2,1 the multiplier is 1.5 and a 60 min estimate suggests 90",
         "Categories are independent"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F04",
