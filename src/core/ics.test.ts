@@ -44,3 +44,31 @@ describe('parseIcs', () => {
     expect(parseIcs('hello', '2026-11-03')).toEqual({ events: [], errors: ['No VEVENT found'] })
   })
 })
+
+describe('parseIcs real-world exports', () => {
+  const d = '2026-11-03'
+  const e = (x: string) => wrap(ev(`UID:u\r\nSUMMARY:S\r\n${x}`))
+  test('nested VALARM properties do not overwrite the event', () => {
+    const r = parseIcs(e('DTSTART:20261103T090000\r\nDTEND:20261103T100000\r\nBEGIN:VALARM\r\nSUMMARY:alarm\r\nDTSTART:20261103T080000\r\nEND:VALARM\r\n'), d)
+    expect(r.events).toEqual([{ id: 'u', title: 'S', start: 540, end: 600 }])
+  })
+  test('cancelled events are skipped', () => {
+    expect(parseIcs(e('STATUS:CANCELLED\r\nDTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n'), d).events).toEqual([])
+  })
+  test('recurring events are reported, not silently dropped', () => {
+    const r = parseIcs(e('RRULE:FREQ=WEEKLY\r\nDTSTART:20261027T090000\r\nDTEND:20261027T100000\r\n'), d)
+    expect(r.events).toEqual([])
+    expect(r.errors[0]).toMatch(/Recurring/)
+  })
+  test('DURATION replaces DTEND', () => {
+    expect(parseIcs(e('DTSTART:20261103T090000\r\nDURATION:PT1H30M\r\n'), d).events[0]).toMatchObject({ start: 540, end: 630 })
+  })
+  test('invalid requested or event dates give errors; case-insensitive BEGIN; duplicate uids get unique ids', () => {
+    expect(parseIcs(e('DTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n'), '2026-02-31').errors).toHaveLength(1)
+    expect(parseIcs(e('DTSTART:20261303T090000\r\nDTEND:20261303T100000\r\n'), d).errors).toHaveLength(1)
+    const lower = parseIcs('begin:vcalendar\nbegin:vevent\nuid:q\nsummary:L\ndtstart:20261103T090000\ndtend:20261103T100000\nend:vevent\n', d)
+    expect(lower.events).toHaveLength(1)
+    const dup = parseIcs(wrap(ev('UID:a\r\nDTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n') + ev('UID:a\r\nDTSTART:20261103T110000\r\nDTEND:20261103T120000\r\n')), d)
+    expect(new Set(dup.events.map((x) => x.id)).size).toBe(2)
+  })
+})

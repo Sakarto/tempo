@@ -37,3 +37,17 @@ describe('parseTimeLog', () => {
     expect(r.errors).toHaveLength(3)
   })
 })
+
+describe('parseTimeLog robustness', () => {
+  test('an unterminated quote is reported and later rows still import', () => {
+    const r = parseTimeLog(`${H}\n2026-11-03,"abc,w,1,1,0,no,3,n\n2026-11-04,a,b,1,1,0,no,3,n`)
+    expect(r.sessions.map((s) => s.date)).toEqual(['2026-11-04'])
+    expect(r.errors).toHaveLength(1)
+    expect(r.errors[0].line).toBe(2)
+  })
+  test('impossible dates and absurd numbers are rejected', () => {
+    const r = parseTimeLog(`${H}\n2026-02-31,t,c,1,2,3,0,5,n\n2026-02-03,t,c,99999999999999999999999,2,3,0,5,n`)
+    expect(r.sessions).toEqual([])
+    expect(r.errors).toHaveLength(2)
+  })
+})

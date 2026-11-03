@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 3/13 · Next up: F04 · Blocked: none
+- Passing features: 4/13 · Next up: F05 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,13 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-03 — F04: Parsers (.ics, CSV time log)
+- Did: `src/core/ics.ts`, `src/core/csvlog.ts`
+- Evidence: `npm test` 36 pass (also under TZ=America/Chicago, Asia/Kolkata); typecheck/lint/build/audit/guard clean
+- Review: 1 cycle, reviewer found 2 must-fix (unterminated quote lost later rows; 2026-02-31 accepted) + should-fix (VALARM overwrite, CANCELLED, RRULE silent, DURATION, bad dates, case, huge numbers); all fixed with tests. Not re-reviewed after fixes.
+- Noticed, not touched: CSV export must escape cells starting with = + - @ (do in F11); DST gap times (02:30) untested; recurring events are reported, not expanded
+- Next: F05 IndexedDB persistence
+
 ### 2026-11-03 — F03: Estimate learning
 - Did: `src/core/estimates.ts` (median multiplier per category, n>=3, snapped to 15-min blocks)
 - Evidence: `npm test` 19 pass; typecheck/lint/build/guard clean

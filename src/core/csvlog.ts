@@ -32,11 +32,24 @@ function records(text: string): { line: number; cells: string[] }[] {
     else if (c === '\n') { endRecord(); line++; startLine = line }
     else cell += c
   }
+  if (quoted) {
+    // Unterminated quote: report it and re-parse everything after its line so later rows still import.
+    const lines = text.split('\n')
+    out.push({ line: startLine, cells: ['\0unterminated'] })
+    return out.concat(records(lines.slice(startLine).join('\n')).map((r) => ({ ...r, line: r.line + startLine })))
+  }
   endRecord()
   return out
 }
 
-const nonNegInt = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : null)
+const nonNegInt = (s: string) => (/^\d+$/.test(s.trim()) && Number.isSafeInteger(Number(s)) ? Number(s) : null)
+
+function validDate(s: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s)
+  if (!m) return false
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  return d.getUTCFullYear() === Number(m[1]) && d.getUTCMonth() === Number(m[2]) - 1 && d.getUTCDate() === Number(m[3])
+}
 
 export function parseTimeLog(text: string): TimeLogResult {
   const recs = records(text.replace(/^﻿/, ''))
@@ -48,6 +61,7 @@ export function parseTimeLog(text: string): TimeLogResult {
   }
   for (const { line, cells } of recs.slice(1)) {
     const fail = (message: string) => errors.push({ line, message })
+    if (cells[0] === '\0unterminated') { fail('Unterminated quote; row skipped'); continue }
     if (cells.length !== TIME_LOG_HEADER.length) { fail(`Expected ${TIME_LOG_HEADER.length} columns, got ${cells.length}`); continue }
     const [date, task, category, est, act, ext, dist, en, note] = cells
     const estimate = nonNegInt(est)
@@ -55,7 +69,7 @@ export function parseTimeLog(text: string): TimeLogResult {
     const extended = ext.trim() === '' ? 0 : nonNegInt(ext)
     const d = dist.trim().toLowerCase()
     const energy = en.trim() === '' ? null : nonNegInt(en)
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim()) || Number.isNaN(new Date(date.trim()).getTime())) fail('Bad date (use YYYY-MM-DD)')
+    if (!validDate(date.trim())) fail('Bad date (use YYYY-MM-DD)')
     else if (!task.trim()) fail('Missing task')
     else if (estimate === null || actual === null || extended === null) fail('estimate_min, actual_min and extended_min must be whole numbers >= 0')
     else if (!['yes', 'y', 'true', '1', 'no', 'n', 'false', '0', ''].includes(d)) fail('distracted must be yes/no')
