@@ -1,13 +1,12 @@
 import type { TimerState } from '../core/timer'
+import type { Session } from '../core/day'
+import type { PlanTask } from '../core/plan'
 import type { FixedEvent } from '../core/scheduler'
 
-export interface StoredTask { id: string; title: string; category: string; duration: number; reward?: string }
-export interface StoredSession {
-  id: string; date: string; task: string; category: string
-  estimate: number; actual: number; extended: number
-  distracted: boolean; energy: number | null; note: string
-}
-interface Stores { tasks: StoredTask; events: FixedEvent; sessions: StoredSession }
+export type StoredTask = PlanTask & { order?: number }
+export type StoredEvent = FixedEvent & { date?: string }
+export type StoredSession = Session
+interface Stores { tasks: StoredTask; events: StoredEvent; sessions: StoredSession }
 type StoreName = keyof Stores
 
 const STORES: StoreName[] = ['tasks', 'events', 'sessions']

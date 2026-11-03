@@ -1,9 +1,9 @@
 /** All times are integer minutes since local midnight. */
 export interface Task { id: string; title: string; duration: number }
 export interface FixedEvent { id: string; title: string; start: number; end: number }
-export interface PlacedTask extends Task { start: number; end: number }
+export type PlacedTask<T extends Task = Task> = T & { start: number; end: number }
 export interface DayWindow { start: number; end: number }
-export interface Schedule { placed: PlacedTask[]; overflow: Task[]; events: FixedEvent[] }
+export interface Schedule<T extends Task = Task> { placed: PlacedTask<T>[]; overflow: T[]; events: FixedEvent[] }
 
 /** Free [start,end) gaps in the window at or after `from`, with fixed events (possibly overlapping) removed. */
 function freeGaps(events: FixedEvent[], day: DayWindow, from: number): [number, number][] {
@@ -26,15 +26,15 @@ function freeGaps(events: FixedEvent[], day: DayWindow, from: number): [number, 
  * Placed tasks stay in priority order in time; a task that fits no remaining gap goes to overflow and
  * later (smaller) tasks may still use the space.
  */
-export function schedule(tasks: Task[], events: FixedEvent[], day: DayWindow, from = day.start): Schedule {
+export function schedule<T extends Task>(tasks: T[], events: FixedEvent[], day: DayWindow, from = day.start): Schedule<T> {
   const ints = [day.start, day.end, from, ...events.flatMap((e) => [e.start, e.end])]
   if (!ints.every(Number.isInteger) || day.end < day.start) throw new RangeError('Times must be integer minutes and day.end >= day.start')
   for (const t of tasks) {
     if (!Number.isInteger(t.duration) || t.duration <= 0) throw new RangeError(`Invalid duration for task ${t.id}`)
   }
   const gaps = freeGaps(events, day, from)
-  const placed: PlacedTask[] = []
-  const overflow: Task[] = []
+  const placed: PlacedTask<T>[] = []
+  const overflow: T[] = []
   let cursor = -Infinity
   for (const task of tasks) {
     let slot: number | undefined

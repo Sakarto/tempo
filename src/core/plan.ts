@@ -1,0 +1,23 @@
+import { schedule, type DayWindow, type FixedEvent, type PlacedTask, type Task } from './scheduler'
+
+export interface PlanTask extends Task {
+  category: string
+  reward?: string
+  /** Minutes added at check-ins; the original estimate is duration - extended. */
+  extended?: number
+  /** Minute of day the running task first started; pins it in place while the rest re-flows. */
+  startMinute?: number
+}
+
+export interface Plan { placed: PlacedTask<PlanTask>[]; overflow: PlanTask[]; events: FixedEvent[] }
+
+/** Today's plan: a started first task stays pinned where it began; everything else flows into the gaps after it (and after now). */
+export function planDay(tasks: PlanTask[], events: FixedEvent[], day: DayWindow, now: number): Plan {
+  const [head, ...rest] = tasks
+  if (head?.startMinute !== undefined) {
+    const end = head.startMinute + head.duration
+    const tail = schedule(rest, events, day, Math.max(end, now, day.start))
+    return { ...tail, placed: [{ ...head, start: head.startMinute, end }, ...tail.placed] }
+  }
+  return schedule(tasks, events, day, Math.max(now, day.start))
+}
