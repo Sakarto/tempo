@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 1/13 · Next up: F02 · Blocked: none
+- Passing features: 2/13 · Next up: F03 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,12 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-03 — F02: Re-flow after extension
+- Did: `src/core/reflow.ts` `extendCurrent` pins running task, extends it, re-schedules the rest after it
+- Evidence: `npm test` 13 pass; typecheck/lint/build/guard clean
+- Review: no subagent (10-line composition of the reviewed `schedule`); self-review only
+- Next: F03 estimate learning
+
 ### 2026-11-03 — F01: Scheduler
 - Did: first-run init (SPEC, features.json, CI, skeleton) + src/core/scheduler.ts
 - Evidence: `npm test` 9 pass; scheduler.ts 100% lines; typecheck/lint/build/audit/guard clean

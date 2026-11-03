@@ -22,7 +22,7 @@
         "A later task that would collide with a fixed event jumps to the next gap",
         "Tasks that no longer fit appear as overflow"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F03",
