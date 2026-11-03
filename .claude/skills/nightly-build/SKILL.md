@@ -18,8 +18,10 @@ person can read in 30 seconds. One feature that verifiably works beats three tha
    `@ts-ignore` / `eslint-disable` / `# noqa` / `istanbul ignore`; do not edit thresholds in CONSTRAINTS.md; do not
    hardcode outputs for test inputs; do not change a feature's steps in `features.json` — you may only flip `passes`.
    `scripts/guard.py` checks this. If you can't make it pass honestly, report it as failing.
-4. **One feature at a time, always mergeable.** Finish, verify, and commit a feature before touching the next. Never end
-   a run with a broken build or uncommitted work.
+4. **One feature at a time, as many features as the run allows.** Finish, verify, review, commit, and push a feature
+   before touching the next, then keep going. Never end a run with a broken build or uncommitted work. If the owner
+   set a scope for tonight (in the prompt or at the top of QUEUE.md, e.g. "tonight: F01–F06" or "light night"),
+   follow it.
 5. **Write the least code that fully works** (reuse ladder below), but never cut validation at trust boundaries, error
    handling that prevents data loss, security, or accessibility.
 6. **Hard limits — prepare, never do:** sign-ups, passwords, payments, paid API keys, production deploys of a live
@@ -51,7 +53,7 @@ Run <date>:
    `CONSTRAINTS.md`. If `QUEUE.md` exists, its top unchecked line is the owner's priority — honor it.
 2. **No SPEC.md / features.json?** This is a first run. Follow [references/first-run.md](references/first-run.md)
    to turn the idea into a spec, a feature list, and a working skeleton, then continue at step 2.
-3. Start a branch: `nightly/<YYYY-MM-DD>-<feature-id>`.
+3. Start one branch for the whole night: `nightly/<YYYY-MM-DD>`.
 4. Run `./init.sh` (or the start command in CLAUDE.md), then the full test suite and one end-to-end smoke check.
    **If the baseline is red, fixing it is tonight's first feature** — never build on a broken base.
 5. Discover the real commands from the repo (package.json, pyproject.toml, Makefile, CI workflow). Never assume
@@ -129,15 +131,18 @@ Run `python3 ${CLAUDE_SKILL_DIR}/scripts/guard.py` (exit 0 = clean) plus every c
 obsolete test), explain it in the report instead of hiding it. Security pass on anything touching input, auth,
 data, or LLM calls: [references/security.md](references/security.md). UI work: [references/ui-quality.md](references/ui-quality.md).
 
-### 8. Ship the report
+### 8. Ship, then keep going
 
+After **each** feature:
 1. Flip `passes` to `true` only for features verified in step 5 **and** reviewed in step 6.
-2. Update PROGRESS.md: what changed, evidence, assumptions, blockers, next step. Keep it short; roll entries older
-   than ~10 runs into a summary line. Never overwrite a file with an emptier or worse version.
-3. Commit, push the branch, open a PR. The PR description is the morning report —
-   use [references/report-template.md](references/report-template.md) exactly.
-4. If time and context remain and the tree is clean and green, you may start the next feature on a new branch.
-   Otherwise stop at this clean boundary.
+2. Update PROGRESS.md: what changed, evidence, assumptions, blockers. Keep it short; roll entries older than
+   ~10 runs into a summary line. Never overwrite a file with an emptier or worse version.
+3. Commit and push the branch, so finished work survives even if the run is cut off. After the first feature, open
+   the pull request; its description is the morning report — use
+   [references/report-template.md](references/report-template.md) exactly and update it after every feature.
+4. **Go back to step 2 and take the next feature.** Stop only when every feature passes, everything left is
+   blocked, the owner's scope for tonight is done, or the run is close to its limits (context getting long or usage
+   warnings). Then make sure the report covers every feature attempted tonight and names the next one.
 
 ## Lessons (owner-maintained)
 

@@ -71,8 +71,10 @@ Later runs may only flip `passes` and append new features — never edit or dele
 }
 ```
 
-Size each feature so one run can finish it (roughly ≤5 files, ≤3 acceptance steps). Order by priority with the
-riskiest unknown early. Aim for the full MVP — 10–40 features is normal.
+Make each feature one capability a user would notice (≤ ~5 files, ≤ 3 acceptance steps) — not a setup step, a
+single function, or "write tests for X": scaffolding, wiring, and tests belong inside the feature that needs them.
+Don't over-split: a good night finishes several features, so the full v1 should take a few nights, not weeks.
+Order by priority with the riskiest unknown early. Typical MVP: 8–25 features.
 
 ## D. Project files
 
