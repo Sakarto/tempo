@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { parseIcs } from './ics'
 
 const wrap = (body: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${body}END:VCALENDAR\r\n`
@@ -78,11 +78,11 @@ describe('parseIcs second-review fixes', () => {
   const e = (x: string) => wrap(ev(`UID:u\r\nSUMMARY:S\r\n${x}`))
   test('DURATION uses wall-clock time on DST days', () => {
     for (const tz of ['America/New_York', 'UTC']) {
-      process.env.TZ = tz
+      vi.stubEnv('TZ', tz)
       const r = parseIcs(e('DTSTART:20260308T080000\r\nDURATION:PT1H\r\n'), '2026-03-08')
       expect(r.events[0]).toMatchObject({ start: 480, end: 540 })
     }
-    delete process.env.TZ
+    vi.unstubAllEnvs()
   })
   test('weeks, and empty durations are skipped', () => {
     expect(parseIcs(e('DTSTART:20261103T090000\r\nDURATION:P1W\r\n'), d).errors).toEqual([])
