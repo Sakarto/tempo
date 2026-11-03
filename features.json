@@ -1,0 +1,156 @@
+{
+  "features": [
+    {
+      "id": "F01",
+      "category": "core",
+      "priority": 1,
+      "description": "Scheduler: lay tasks into free gaps around fixed events, in priority order; unplaceable tasks become overflow; never shrink tasks; fixed events never move",
+      "steps": [
+        "Given a 09:00-17:00 day, a 12:00-13:00 event and 30/60/90 min tasks, tasks are placed in order in free gaps without overlapping the event",
+        "A task longer than every remaining gap lands in overflow with its duration unchanged",
+        "Fixed events are returned at their original times"
+      ],
+      "passes": true
+    },
+    {
+      "id": "F02",
+      "category": "core",
+      "priority": 2,
+      "description": "Re-flow after extension: extending the running task by N min shifts later tasks by N, respecting fixed events, with overflow if the day runs out",
+      "steps": [
+        "Extending the current task +15 moves every later task 15 min later",
+        "A later task that would collide with a fixed event jumps to the next gap",
+        "Tasks that no longer fit appear as overflow"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F03",
+      "category": "core",
+      "priority": 3,
+      "description": "Estimate learning: per-category median(actual/estimate) multiplier from >=3 sessions, snapped suggestion to 15-min blocks",
+      "steps": [
+        "With <3 sessions in a category no suggestion is produced",
+        "With 3 sessions of ratios 1.5,2,1 the multiplier is 1.5 and a 60 min estimate suggests 90",
+        "Categories are independent"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F04",
+      "category": "core",
+      "priority": 4,
+      "description": "Parsers: .ics fixed-event import and CSV time-log import (date,task,category,estimate_min,actual_min,extended_min,distracted,energy_1to5,note)",
+      "steps": [
+        "An .ics with two VEVENTs on one day yields two fixed events with correct minutes",
+        "A CSV in the specified columns yields session records; quoted commas and bad rows are handled without crashing",
+        "Malformed input returns an error list, not an exception"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F05",
+      "category": "storage",
+      "priority": 5,
+      "description": "Persistence in IndexedDB: tasks, events, sessions, active-timer state survive reload",
+      "steps": [
+        "Save then reopen the DB: data is identical",
+        "Active timer state restores with correct elapsed time after simulated reload"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F06",
+      "category": "ui",
+      "priority": 6,
+      "description": "Plan screen: add tasks (title, category, 15/30/60/90 estimate, optional reward), import .ics, see day timeline with overflow section",
+      "steps": [
+        "Add 5 tasks and import an .ics; timeline shows them in gaps",
+        "Overflow shown separately when the day is full",
+        "Works at 375px with no horizontal scroll"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F07",
+      "category": "ui",
+      "priority": 7,
+      "description": "Focus session: big countdown for the block plus stopwatch of real time; start/pause",
+      "steps": [
+        "Start shows countdown and elapsed counting",
+        "Pause stops both",
+        "Reload mid-session restores the timer"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F08",
+      "category": "ui",
+      "priority": 8,
+      "description": "Check-in at block end: Done / +15 / +30 / Stuck-switch, then Break 5-10 or Skip break; plan re-flows immediately; reward reminder shown",
+      "steps": [
+        "At block end the check-in appears",
+        "+15 shifts later tasks 15 min",
+        "Done logs a session and shows the task's reward if set"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F09",
+      "category": "ui",
+      "priority": 9,
+      "description": "Keyboard shortcuts: Space start/pause, D done, E extend",
+      "steps": [
+        "Space toggles timer",
+        "D completes the task",
+        "E extends 15 min"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F10",
+      "category": "ui",
+      "priority": 10,
+      "description": "Stats page: estimate-vs-actual by category, focus minutes per day, streak, adjusted-estimate suggestion at task creation",
+      "steps": [
+        "After 3 sessions in a category the ratio is shown",
+        "New task in that category shows the suggestion with accept/override",
+        "Streak counts consecutive days with a session"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F11",
+      "category": "data",
+      "priority": 11,
+      "description": "Import CSV time log and export all data as JSON/CSV in one click",
+      "steps": [
+        "Importing the sample CSV adds sessions",
+        "Export downloads a file containing all tasks, events, sessions"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F12",
+      "category": "pwa",
+      "priority": 12,
+      "description": "Installable offline PWA: manifest + service worker",
+      "steps": [
+        "Manifest valid with icons",
+        "After first load the app loads with network disabled"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F13",
+      "category": "quality",
+      "priority": 13,
+      "description": "Accessibility and responsive pass: axe has zero critical/serious violations; usable at 375px",
+      "steps": [
+        "axe run on main screens reports none",
+        "No horizontal scroll at 375px"
+      ],
+      "passes": false
+    }
+  ]
+}
