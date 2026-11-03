@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 4/13 · Next up: F05 · Blocked: none
+- Passing features: 5/13 · Next up: F06 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,14 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-03 — F05: IndexedDB persistence
+- Did: `src/storage/db.ts` (tasks/events/sessions/meta), `src/core/timer.ts` (wall-clock stopwatch)
+- Evidence: `npm test` 52 pass; real Chromium via Playwright: wrote task+timer, reloaded, data present and elapsed 5s→7s, no console errors (evidence/f05-reload.png, untracked)
+- Review: 1 cycle, 3 should-fix (version-change hang, non-idempotent upgrade, double rejection) fixed + tested
+- Noticed, not touched: db/timer not wired into UI yet (F06/F07); no navigator.storage.persist()
+- Fixed: scaffold had overwritten original .gitignore (secrets/coverage); restored
+- Next: F06 plan screen
+
 ### 2026-11-03 — F04: Parsers (.ics, CSV time log)
 - Did: `src/core/ics.ts`, `src/core/csvlog.ts`
 - Evidence: `npm test` 36 pass (also under TZ=America/Chicago, Asia/Kolkata); typecheck/lint/build/audit/guard clean

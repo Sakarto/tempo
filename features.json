@@ -57,7 +57,7 @@
         "Save then reopen the DB: data is identical",
         "Active timer state restores with correct elapsed time after simulated reload"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F06",
