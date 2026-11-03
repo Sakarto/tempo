@@ -46,7 +46,7 @@
         "A CSV in the specified columns yields session records; quoted commas and bad rows are handled without crashing",
         "Malformed input returns an error list, not an exception"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F05",
