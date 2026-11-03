@@ -142,3 +142,5 @@ data, or LLM calls: [references/security.md](references/security.md). UI work: [
 ## Lessons (owner-maintained)
 
 When the owner corrects a run's mistake, add a one-line rule here so later runs don't repeat it.
+
+- Every feature gets a fresh-subagent review (step 6) before `passes` flips to true, including small pure-logic features; "self-review only" never counts. If a subagent can't be spawned, leave `passes: false` and list it under "Needs you". (2026-11-03)
