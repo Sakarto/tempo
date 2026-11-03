@@ -3,19 +3,21 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: <n>/<total> · Next up: <feature id> · Blocked: <ids or none>
-- Start: `./init.sh` · Baseline at last run: tests ✅ build ✅
+- Passing features: 1/13 · Next up: F02 · Blocked: none
+- Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
-- <decision> — <why> (run <date>)
+- Stack: React+Vite+Vitest, no PWA plugin; see SPEC.md (2026-11-03)
+- Scheduler keeps placed tasks in priority order in time; oversized tasks overflow while smaller later ones may still fill gaps (2026-11-03)
+- features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
-### <YYYY-MM-DD> — <feature id>: <title>
-- Did: <what changed, files>
-- Evidence: <commands + results, screenshot paths>
-- Review: <cycles, findings fixed / accepted>
-- Blockers: <exact error, attempts, best hypothesis> or none
-- Noticed, not touched: <unrelated issues>
-- Next: <single next step>
+### 2026-11-03 — F01: Scheduler
+- Did: first-run init (SPEC, features.json, CI, skeleton) + src/core/scheduler.ts
+- Evidence: `npm test` 9 pass; scheduler.ts 100% lines; typecheck/lint/build/audit/guard clean
+- Review: 1 cycle; 2 should-fix input-validation findings fixed + tested. Invalid duration throws rather than overflowing (accepted)
+- Blockers: none
+- Noticed, not touched: none
+- Next: F02 re-flow after extension
 
 ## Earlier

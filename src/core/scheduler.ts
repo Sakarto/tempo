@@ -27,6 +27,8 @@ function freeGaps(events: FixedEvent[], day: DayWindow, from: number): [number, 
  * later (smaller) tasks may still use the space.
  */
 export function schedule(tasks: Task[], events: FixedEvent[], day: DayWindow, from = day.start): Schedule {
+  const ints = [day.start, day.end, from, ...events.flatMap((e) => [e.start, e.end])]
+  if (!ints.every(Number.isInteger) || day.end < day.start) throw new RangeError('Times must be integer minutes and day.end >= day.start')
   for (const t of tasks) {
     if (!Number.isInteger(t.duration) || t.duration <= 0) throw new RangeError(`Invalid duration for task ${t.id}`)
   }

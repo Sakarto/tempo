@@ -57,4 +57,11 @@ describe('schedule', () => {
     expect(r.placed[0].start).toBe(600)
     expect(() => schedule([t('z', 0)], [], DAY)).toThrow()
   })
+
+  test('rejects non-integer or inverted times instead of silently overflowing', () => {
+    expect(() => schedule([t('a', 30)], [], DAY, NaN)).toThrow(RangeError)
+    expect(() => schedule([t('a', 30)], [], DAY, 600.5)).toThrow(RangeError)
+    expect(() => schedule([t('a', 30)], [], { start: 600, end: 500 })).toThrow(RangeError)
+    expect(() => schedule([t('a', 30)], [{ id: 'e', title: 'e', start: 1.5, end: 20 }], DAY)).toThrow(RangeError)
+  })
 })

@@ -10,7 +10,7 @@
         "A task longer than every remaining gap lands in overflow with its duration unchanged",
         "Fixed events are returned at their original times"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F02",

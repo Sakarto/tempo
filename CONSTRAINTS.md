@@ -22,7 +22,7 @@ The quality bar for this repo. Tightening is fine; loosening needs the owner's s
 ## Measured, must not get worse (ratchet)
 | Metric | Last value | Direction |
 |---|---|---|
-| Project test coverage | measure after F01 | must not fall by > 0.5% |
+| Project test coverage | see test:cov (scheduler 100%) | must not fall by > 0.5% |
 
 ## Exceptions
 | Rule | Path | Reason | Expires |
