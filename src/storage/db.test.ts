@@ -55,4 +55,26 @@ describe('tempo db', () => {
     expect(await db.loadTimer()).toBeNull()
     db.close()
   })
+
+  test('a newer schema version can open while an old connection is open, and existing data survives', async () => {
+    const old = await openTempoDb(name)
+    await old.put('tasks', { id: 't1', title: 'A', category: 'c', duration: 30 })
+    const upgraded = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(name, 2)
+      req.onupgradeneeded = () => req.result.createObjectStore('extra')
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+      req.onblocked = () => reject(new Error('blocked'))
+    })
+    expect(Array.from(upgraded.objectStoreNames)).toContain('extra')
+    expect(Array.from(upgraded.objectStoreNames)).toContain('tasks')
+    upgraded.close()
+  })
+
+  test('a failed write rejects cleanly (vitest fails the run on any unhandled rejection)', async () => {
+    const db = await openTempoDb(name)
+    await expect(db.put('tasks', { title: 'no id' } as never)).rejects.toBeDefined()
+    await new Promise((r) => setTimeout(r, 50))
+    db.close()
+  })
 })

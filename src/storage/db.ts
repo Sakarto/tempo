@@ -40,17 +40,20 @@ export function openTempoDb(name = 'tempo'): Promise<TempoDb> {
   return new Promise((resolve, reject) => {
     const open = indexedDB.open(name, 1)
     open.onupgradeneeded = () => {
-      for (const s of STORES) open.result.createObjectStore(s, { keyPath: 'id' })
-      open.result.createObjectStore('meta')
+      // Idempotent so a future version bump (or a partially created database) can never hit a ConstraintError.
+      const names = open.result.objectStoreNames
+      for (const s of STORES) if (!names.contains(s)) open.result.createObjectStore(s, { keyPath: 'id' })
+      if (!names.contains('meta')) open.result.createObjectStore('meta')
     }
     open.onerror = () => reject(open.error)
+    open.onblocked = () => reject(new Error('Tempo database is open in another tab; close it and retry'))
     open.onsuccess = () => {
       const db = open.result
+      db.onversionchange = () => db.close() // let a newer tab/build upgrade the schema instead of hanging
       const run = async <T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> => {
         const tx = db.transaction(store, mode)
         const done = committed(tx)
-        const result = await wrap(fn(tx.objectStore(store)))
-        await done
+        const [result] = await Promise.all([wrap(fn(tx.objectStore(store))), done])
         return result
       }
       resolve({
