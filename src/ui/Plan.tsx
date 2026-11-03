@@ -1,28 +1,23 @@
 import { useState, type FormEvent } from 'react'
-import { planDay, type PlanTask } from '../core/plan'
-import type { FixedEvent } from '../core/scheduler'
+import type { Plan as DayPlan, PlanTask } from '../core/plan'
 
-const DAY = { start: 9 * 60, end: 22 * 60 }
 const BLOCKS = [15, 30, 60, 90]
 
 const hhmm = (m: number) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
 
 interface Props {
-  tasks: PlanTask[]
-  events: FixedEvent[]
-  nowMinute: number
+  plan: DayPlan
   importErrors: string[]
   onAdd: (t: Omit<PlanTask, 'id'>) => void
   onRemove: (id: string) => void
   onImport: (file: File) => void
 }
 
-export function Plan({ tasks, events, nowMinute, importErrors, onAdd, onRemove, onImport }: Props) {
+export function Plan({ plan, importErrors, onAdd, onRemove, onImport }: Props) {
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('')
   const [duration, setDuration] = useState(30)
   const [reward, setReward] = useState('')
-  const plan = planDay(tasks, events, DAY, nowMinute)
 
   const submit = (e: FormEvent) => {
     e.preventDefault()

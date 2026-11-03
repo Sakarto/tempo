@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { dateOf, minuteOf, type DayState } from '../core/day'
+import { dateOf, dropStale, minuteOf, type DayState } from '../core/day'
 import type { PlanTask } from '../core/plan'
 import { parseIcs } from '../core/ics'
 import type { FixedEvent } from '../core/scheduler'
@@ -11,7 +11,7 @@ async function persist(db: TempoDb, prev: DayState, next: DayState) {
   const ops: Promise<void>[] = next.tasks.map((t, order) => db.put('tasks', { ...t, order }))
   for (const t of prev.tasks) if (!next.tasks.some((n) => n.id === t.id)) ops.push(db.remove('tasks', t.id))
   for (const s of next.sessions) if (!prev.sessions.includes(s)) ops.push(db.put('sessions', s))
-  ops.push(db.saveTimer(next.timer))
+  if (prev.timer !== next.timer) ops.push(db.saveTimer(next.timer)) // a stale second tab must not overwrite a timer it never touched
   await Promise.all(ops)
 }
 
@@ -34,7 +34,9 @@ export function useTempo() {
       db.current = opened
       const today = dateOf(Date.now())
       const ordered = tasks.sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(({ order: _order, ...t }) => t)
-      current.current = { tasks: ordered, sessions, timer }
+      const loaded = dropStale({ tasks: ordered, sessions, timer }, today)
+      current.current = loaded
+      if (loaded.timer !== timer) await persist(opened, { tasks: ordered, sessions, timer }, loaded)
       setState(current.current)
       setEvents(stored.filter((e) => e.date === today))
     }).catch((e: unknown) => setError(`Storage unavailable, changes will not be saved (${e instanceof Error ? e.message : String(e)})`))
@@ -64,6 +66,11 @@ export function useTempo() {
   const importIcs = useCallback(async (file: File) => {
     const today = dateOf(Date.now())
     const result = parseIcs(await file.text(), today)
+    if (result.events.length === 0) {
+      // Never wipe saved events because of a bad or wrong-day file.
+      setImportErrors([...result.errors, 'No events for today were found in that file; kept your existing events.'])
+      return
+    }
     setImportErrors(result.errors)
     setEvents(result.events)
     const opened = db.current

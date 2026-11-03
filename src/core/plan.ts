@@ -1,5 +1,7 @@
 import { schedule, type DayWindow, type FixedEvent, type PlacedTask, type Task } from './scheduler'
 
+export const DEFAULT_DAY: DayWindow = { start: 9 * 60, end: 22 * 60 }
+
 export interface PlanTask extends Task {
   category: string
   reward?: string
@@ -7,6 +9,8 @@ export interface PlanTask extends Task {
   extended?: number
   /** Minute of day the running task first started; pins it in place while the rest re-flows. */
   startMinute?: number
+  /** Local date (YYYY-MM-DD) of startMinute. */
+  startDate?: string
 }
 
 export interface Plan { placed: PlacedTask<PlanTask>[]; overflow: PlanTask[]; events: FixedEvent[] }

@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 5/13 · Next up: F06 · Blocked: none
+- Passing features: 8/13 · Next up: F09 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,14 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-03 — F06+F07+F08: plan screen, focus timer, check-in
+- Did: `src/core/{plan,day}.ts`, `src/ui/*`, `src/App.tsx`; scheduler made generic
+- Evidence: `npm test` 67 pass (core coverage 98%); Playwright in real Chromium with a fake clock (add 5 tasks + .ics, start/pause, reload mid-session, check-in, +15 re-flow, Done+reward, Stuck, 375px, no console errors); screenshots in evidence/ (untracked)
+- Review: 1 cycle; must-fix (late +15 gave no extra time, actual overcounted) + stale-day timer, start-when-overflow, import wiping events, long titles, 2-tab timer clobber, focus after Done: fixed and re-verified in browser
+- Changed assertion on purpose: finish() actual is now capped at block length (idle wait at check-in isn't work), so one test expects 45 not 50
+- Trade-offs: Stuck discards elapsed time (nothing logged); two tabs can still disagree on task order (timer fixed); started task may run past 22:00 via extensions
+- Next: F09 keyboard shortcuts
+
 ### 2026-11-03 — F05: IndexedDB persistence
 - Did: `src/storage/db.ts` (tasks/events/sessions/meta), `src/core/timer.ts` (wall-clock stopwatch)
 - Evidence: `npm test` 52 pass; real Chromium via Playwright: wrote task+timer, reloaded, data present and elapsed 5s→7s, no console errors (evidence/f05-reload.png, untracked)

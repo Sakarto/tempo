@@ -16,6 +16,7 @@ button.link { background: none; border: none; color: var(--accent); text-decorat
 button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; }
 .add-form { display: grid; gap: 4px; margin-bottom: 12px; }
+.timeline .title, .current, .overflow li { overflow-wrap: anywhere; min-width: 0; }
 .big { font-size: clamp(3rem, 14vw, 5.5rem); font-variant-numeric: tabular-nums; margin: 4px 0; line-height: 1; }
 .current { font-size: 1.25rem; margin: 0; }
 .muted { color: var(--muted); }
