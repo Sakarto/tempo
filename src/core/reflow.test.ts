@@ -34,4 +34,18 @@ describe('extendCurrent', () => {
     expect(() => run(0)).toThrow(RangeError)
     expect(() => run(7.5)).toThrow(RangeError)
   })
+
+  test('re-packs after the new end: slack before a later task is not preserved', () => {
+    // a runs 09:00-09:30 (+15 -> 09:45); b used to start at 11:40 but is re-packed right after a
+    const r = extendCurrent({ current: t('a', 30), start: 540, extra: 15, rest: [t('b', 30)], events: [], day: DAY })
+    expect(r.placed.map((p) => [p.id, p.start])).toEqual([['a', 540], ['b', 585]])
+  })
+
+  test('an extension that runs into a fixed event keeps the event and the full duration', () => {
+    const ev: FixedEvent[] = [{ id: 'e', title: 'e', start: 560, end: 620 }]
+    const r = extendCurrent({ current: t('a', 30), start: 540, extra: 30, rest: [t('b', 30)], events: ev, day: DAY })
+    expect(r.placed[0]).toMatchObject({ id: 'a', start: 540, end: 600 })
+    expect(r.placed[1]).toMatchObject({ id: 'b', start: 620 })
+    expect(r.events).toEqual(ev)
+  })
 })

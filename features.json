@@ -69,7 +69,7 @@
         "Overflow shown separately when the day is full",
         "Works at 375px with no horizontal scroll"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F07",
@@ -81,7 +81,7 @@
         "Pause stops both",
         "Reload mid-session restores the timer"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F08",
@@ -93,7 +93,7 @@
         "+15 shifts later tasks 15 min",
         "Done logs a session and shows the task's reward if set"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F09",
