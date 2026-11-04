@@ -1,6 +1,7 @@
 import type { FixedEvent } from './scheduler'
 
-export type IcsResult = { events: FixedEvent[]; errors: string[] }
+/** errors = the file is bad, import nothing. warnings = some events were skipped on purpose, the rest import. */
+export type IcsResult = { events: FixedEvent[]; errors: string[]; warnings: string[] }
 type Prop = { prop: string; value: string }
 type Raw = Record<string, Prop[]>
 
@@ -45,6 +46,7 @@ function parseDuration(v: string): number | null {
 
 /** Does the recurrence rule produce an instance on local date `day`? null = unsupported rule. */
 function occursOn(rule: string, start: Date, day: Date, exdates: Set<number>): boolean | null {
+  const candidate = new Date(day.getFullYear(), day.getMonth(), day.getDate(), start.getHours(), start.getMinutes())
   const r = Object.fromEntries(rule.split(';').map((kv) => kv.split('=') as [string, string]))
   if (r.FREQ !== 'DAILY' && r.FREQ !== 'WEEKLY') return null
   const interval = Math.max(1, Number(r.INTERVAL ?? 1) || 1)
@@ -58,7 +60,8 @@ function occursOn(rule: string, start: Date, day: Date, exdates: Set<number>): b
     const week = Math.floor((n + ((midnightOf(start).getDay() + 6) % 7)) / 7)
     return week % interval === 0 && (byday ?? [DOW[start.getDay()]]).includes(DOW[d.getDay()])
   }
-  const untilDay = until instanceof Date ? midnightOf(until).getTime() : r.UNTIL && /^\d{8}$/.test(r.UNTIL) ? midnightOf(new Date(+r.UNTIL.slice(0, 4), +r.UNTIL.slice(4, 6) - 1, +r.UNTIL.slice(6, 8))).getTime() : Infinity
+  const untilDay = until instanceof Date ? Infinity : r.UNTIL && /^\d{8}$/.test(r.UNTIL) ? midnightOf(new Date(+r.UNTIL.slice(0, 4), +r.UNTIL.slice(4, 6) - 1, +r.UNTIL.slice(6, 8))).getTime() : Infinity
+  if (until instanceof Date && candidate.getTime() > until.getTime()) return false
   if (day.getTime() > untilDay || exdates.has(day.getTime()) || !hit(days)) return false
   if (r.COUNT) {
     let seen = 0
@@ -70,15 +73,17 @@ function occursOn(rule: string, start: Date, day: Date, exdates: Set<number>): b
 
 /** Events overlapping `day` (a local date), as wall-clock minutes since midnight clipped to [dayStart, dayEnd]. */
 export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: number): IcsResult {
-  if (text.length > MAX_BYTES) return { events: [], errors: ['That file is too large (limit 2 MB).'] }
-  if (!/BEGIN:VCALENDAR/i.test(text)) return { events: [], errors: ['This file is not an iCalendar (.ics) file.'] }
+  if (text.length > MAX_BYTES) return { events: [], errors: ['That file is too large (limit 2 MB).'], warnings: [] }
+  if (!/BEGIN:VCALENDAR/i.test(text)) return { events: [], errors: ['This file is not an iCalendar (.ics) file.'], warnings: [] }
   const errors: string[] = []
+  const warnings: string[] = []
   if (!/END:VCALENDAR/i.test(text)) errors.push('The file looks truncated (no END:VCALENDAR).')
   const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
   const events: FixedEvent[] = []
   const today = midnightOf(day)
   let cur: Raw | null = null
   let n = 0
+  let inAlarm = false
 
   const finish = (c: Raw) => {
     const first = (k: string) => c[k]?.[0]
@@ -103,8 +108,11 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
           if (x instanceof Date) ex.add(midnightOf(x).getTime())
           else if (x === 'date') ex.add(new Date(+v.slice(0, 4), +v.slice(4, 6) - 1, +v.slice(6, 8)).getTime())
         }
+        const tz = /TZID=([^;:]+)/i.exec(sp!.prop)?.[1]
+        if (tz && zoneOffset(tz, s.getTime()) !== -s.getTimezoneOffset() * 60_000)
+          return void warnings.push(`${label} repeats in a different time zone than yours and was skipped.`)
         const hit = occursOn(rule, s, today, ex)
-        if (hit === null) return void errors.push(`${label} repeats in a way Tempo can't read yet, so it was skipped.`)
+        if (hit === null) return void warnings.push(`${label} repeats in a way Tempo can't read yet, so it was skipped.`)
         if (!hit) return
         a = new Date(today.getFullYear(), today.getMonth(), today.getDate(), s.getHours(), s.getMinutes())
         b = new Date(a.getTime() + (e.getTime() - s.getTime()))
@@ -122,7 +130,8 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
       const end = Math.min(dayEnd, em)
       if (end > start) events.push({ id: crypto.randomUUID(), title, start, end })
     } catch (err) {
-      errors.push(`${label} could not be read (${err instanceof RangeError ? 'unknown time zone' : 'bad data'}) and was skipped.`)
+      if (err instanceof RangeError) warnings.push(`${label} uses an unknown time zone and was skipped.`)
+      else errors.push(`${label} could not be read and was skipped.`)
     }
   }
 
@@ -132,7 +141,9 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
       cur = {}; n++; continue
     }
     if (/^END:VEVENT/i.test(line)) { if (cur) finish(cur); cur = null; continue }
-    if (!cur) continue
+    if (/^BEGIN:VALARM/i.test(line)) { inAlarm = true; continue }
+    if (/^END:VALARM/i.test(line)) { inAlarm = false; continue }
+    if (!cur || inAlarm) continue
     const i = line.indexOf(':')
     if (i < 0) continue
     const prop = line.slice(0, i)
@@ -140,5 +151,5 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
     ;(cur[key] ??= []).push({ prop, value: line.slice(i + 1) })
   }
   if (cur) errors.push(`Event ${n} is missing END:VEVENT and was skipped.`)
-  return { events: events.sort((x, y) => x.start - y.start), errors }
+  return { events: errors.length ? [] : events.sort((x, y) => x.start - y.start), errors, warnings }
 }

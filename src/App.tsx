@@ -63,10 +63,10 @@ export default function App() {
     if (!file) return
     setNotice('')
     const r = parseIcs(await file.text(), new Date(), DAY_START, DAY_END)
-    setError(r.errors.join(' '))
+    setError([...r.errors, ...r.warnings].join(' '))
+    if (r.errors.length > 0) return // bad file: change nothing
     const dupe = (a: FixedEvent, b: FixedEvent) => a.title === b.title && a.start === b.start && a.end === b.end
     const fresh = r.events.filter((n) => !events.some((x) => dupe(x, n)))
-    if (r.events.length === 0 && r.errors.length > 0) return
     setNotice(fresh.length === 0 && r.events.length === 0 ? 'No events for today in this file.'
       : `Imported ${fresh.length} event${fresh.length === 1 ? '' : 's'} for today${r.events.length > fresh.length ? ` (${r.events.length - fresh.length} already there)` : ''}.`)
     setEvents((prev) => [...prev, ...fresh.filter((n) => !prev.some((x) => dupe(x, n)))])

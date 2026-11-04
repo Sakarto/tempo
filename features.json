@@ -34,7 +34,7 @@
         "Events for today appear in the plan",
         "Malformed file shows an error, data unchanged"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F04",

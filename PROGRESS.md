@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 2/11 · Next up: F03 · Blocked: none
+- Passing features: 3/11 · Next up: F04 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅
 
 ## Assumptions (owner can overrule)
@@ -11,6 +11,12 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - See SPEC.md Assumptions for product decisions (run 2026-11-04)
 
 ## Runs
+### 2026-11-04 — F03: .ics import
+- Did: src/core/ics.ts (TZID via Intl, DAILY/WEEKLY recurrence, DURATION, CANCELLED, VALARM ignored, wall-clock minutes), import button + dedupe in App.tsx.
+- Evidence: `npm test` 28 passed under TZ=UTC, America/New_York, Asia/Kolkata; Playwright: 3 events import, re-import 0 new, junk file -> alert.
+- Review: 2 cycles (fresh subagents). Cycle 1: 3 must-fix (silent bad file, TZID, RRULE) + 5 should-fix, all fixed. Cycle 2: 4 should-fix (UNTIL instant, partial import on errors, VALARM, recurring TZID in other zone) fixed or turned into visible warnings; crypto.randomUUID in insecure context not addressed (app already needs secure context).
+- Next: F04 focus session timer
+
 ### 2026-11-04 — F02: plan-today UI + IndexedDB
 - Did: src/App.tsx, src/store/db.ts; save/load errors surfaced, events limited to 09:00–22:00, long titles wrap.
 - Evidence: `npm test` 13 passed; Playwright run (5 tasks+event, reload, 375px, no console errors); evidence/f02-*.png (gitignored).
