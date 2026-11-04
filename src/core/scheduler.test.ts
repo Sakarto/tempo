@@ -49,4 +49,16 @@ describe('schedule', () => {
     const r = schedule({ ...day, from: 615, events: [], tasks: [t('a', 30)] })
     expect(r.blocks[0].start).toBe(615)
   })
+
+  it('never places a task with a non-positive or NaN estimate', () => {
+    const bad = [t('neg', -10), t('zero', 0), t('nan', NaN)]
+    const r = schedule({ ...day, events: [], tasks: [...bad, t('ok', 30)] })
+    expect(r.blocks).toEqual([{ taskId: 'ok', start: 540, end: 570 }])
+    expect(r.overflow).toEqual(bad)
+  })
+
+  it('ignores a NaN `from`', () => {
+    const r = schedule({ ...day, from: NaN, events: [], tasks: [t('a', 30)] })
+    expect(r.blocks[0].start).toBe(540)
+  })
 })

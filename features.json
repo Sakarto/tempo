@@ -10,7 +10,7 @@
         "A task longer than every gap goes to overflow, unchanged",
         "Unit tests in src/core/scheduler.test.ts pass"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F02",

@@ -22,11 +22,12 @@ function gaps(events: FixedEvent[], from: number, dayEnd: number): [number, numb
 
 /** First-fit by priority (1 = highest, ties keep input order). Durations are never shrunk. */
 export function schedule({ tasks, events, dayStart, dayEnd, from }: Input): Plan {
-  const free = gaps(events, Math.max(dayStart, from ?? dayStart), dayEnd)
+  const free = gaps(events, Number.isFinite(from) ? Math.max(dayStart, from!) : dayStart, dayEnd)
   const ordered = tasks.map((t, i) => ({ t, i })).sort((a, b) => a.t.priority - b.t.priority || a.i - b.i)
   const blocks: Block[] = []
   const overflow: Task[] = []
   for (const { t } of ordered) {
+    if (!(t.estimate > 0)) { overflow.push(t); continue } // invalid estimate is never placed
     const g = free.find(([a, b]) => b - a >= t.estimate)
     if (!g) { overflow.push(t); continue }
     blocks.push({ taskId: t.id, start: g[0], end: g[0] + t.estimate })
