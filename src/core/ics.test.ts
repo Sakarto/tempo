@@ -1,101 +1,156 @@
-import { describe, expect, test, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { parseIcs } from './ics'
 
 const wrap = (body: string) => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\n${body}END:VCALENDAR\r\n`
-const ev = (extra: string) => `BEGIN:VEVENT\r\n${extra}END:VEVENT\r\n`
+const ev = (lines: string) => `BEGIN:VEVENT\r\n${lines}\r\nEND:VEVENT\r\n`
+const today = new Date(2026, 10, 4) // local 2026-11-04
 
 describe('parseIcs', () => {
-  test('two events on one day give two fixed events with correct minutes', () => {
-    const text = wrap(
-      ev('UID:1\r\nSUMMARY:Class\r\nDTSTART:20261103T090000\r\nDTEND:20261103T103000\r\n') +
-        ev('UID:2\r\nSUMMARY:Gym\r\nDTSTART;TZID=America/Chicago:20261103T170000\r\nDTEND;TZID=America/Chicago:20261103T180000\r\n') +
-        ev('UID:3\r\nSUMMARY:Other day\r\nDTSTART:20261104T090000\r\nDTEND:20261104T100000\r\n'),
+  it('reads floating local times for today and ignores other days', () => {
+    const ics = wrap(
+      ev('SUMMARY:Class\r\nDTSTART:20261104T100000\r\nDTEND:20261104T113000') +
+      ev('SUMMARY:Gym\r\nDTSTART:20261104T170000\r\nDTEND:20261104T180000') +
+      ev('SUMMARY:Tomorrow\r\nDTSTART:20261105T100000\r\nDTEND:20261105T110000'),
     )
-    const r = parseIcs(text, '2026-11-03')
+    const r = parseIcs(ics, today, 540, 1320)
+    expect(r.events.map((e) => [e.title, e.start, e.end])).toEqual([['Class', 600, 690], ['Gym', 1020, 1080]])
     expect(r.errors).toEqual([])
-    expect(r.events).toEqual([
-      { id: '1', title: 'Class', start: 540, end: 630 },
-      { id: '2', title: 'Gym', start: 1020, end: 1080 },
-    ])
   })
 
-  test('unfolds long lines and unescapes text', () => {
-    const text = wrap(ev('UID:1\r\nSUMMARY:Club\\, board\r\n  meeting\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\n'))
-    expect(parseIcs(text, '2026-11-03').events[0].title).toBe('Club, board meeting')
+  it('handles folded lines and escaped text', () => {
+    const ics = wrap(ev('SUMMARY:Lab\\, part\r\n  two\r\nDTSTART:20261104T140000\r\nDTEND:20261104T150000'))
+    const r = parseIcs(ics, today, 540, 1320)
+    expect(r.events[0]).toMatchObject({ title: 'Lab, part two', start: 840, end: 900 })
   })
 
-  test('all-day events are skipped; malformed events are reported, not thrown', () => {
-    const text = wrap(
-      ev('UID:a\r\nSUMMARY:Holiday\r\nDTSTART;VALUE=DATE:20261103\r\nDTEND;VALUE=DATE:20261104\r\n') +
-        ev('UID:b\r\nSUMMARY:Broken\r\nDTSTART:garbage\r\n') +
-        ev('UID:c\r\nSUMMARY:Ok\r\nDTSTART:20261103T080000\r\nDTEND:20261103T090000\r\n'),
+  it('converts UTC times to local time', () => {
+    const d = new Date(Date.UTC(2026, 10, 4, 15, 0))
+    const local = d.getHours() * 60 + d.getMinutes()
+    const ics = wrap(ev('SUMMARY:U\r\nDTSTART:20261104T150000Z\r\nDTEND:20261104T160000Z'))
+    const r = parseIcs(ics, new Date(d.getFullYear(), d.getMonth(), d.getDate()), 0, 1440)
+    expect(r.events[0]).toMatchObject({ start: local, end: local + 60 })
+  })
+
+  it('skips all-day events, clips to the day window, defaults missing DTEND to 60 min', () => {
+    const ics = wrap(
+      ev('SUMMARY:Holiday\r\nDTSTART;VALUE=DATE:20261104\r\nDTEND;VALUE=DATE:20261105') +
+      ev('SUMMARY:Late\r\nDTSTART:20261104T210000\r\nDTEND:20261104T233000') +
+      ev('SUMMARY:Early\r\nDTSTART:20261104T070000\r\nDTEND:20261104T080000') +
+      ev('SUMMARY:NoEnd\r\nDTSTART:20261104T120000'),
     )
-    const r = parseIcs(text, '2026-11-03')
-    expect(r.events.map((e) => e.id)).toEqual(['c'])
+    const r = parseIcs(ics, today, 540, 1320)
+    expect(r.events.map((e) => [e.title, e.start, e.end])).toEqual([['NoEnd', 720, 780], ['Late', 1260, 1320]])
+  })
+
+  it('reports a file that is not a calendar and malformed events', () => {
+    expect(parseIcs('hello world', today, 540, 1320).errors[0]).toMatch(/not an iCalendar/i)
+    const r = parseIcs(wrap(ev('SUMMARY:Bad\r\nDTSTART:garbage')), today, 540, 1320)
+    expect(r.events).toEqual([])
     expect(r.errors).toHaveLength(1)
   })
 
-  test('an event crossing midnight is clamped to the day', () => {
-    const text = wrap(ev('UID:1\r\nSUMMARY:Late\r\nDTSTART:20261103T230000\r\nDTEND:20261104T010000\r\n'))
-    expect(parseIcs(text, '2026-11-03').events[0]).toMatchObject({ start: 1380, end: 1440 })
+  it('converts TZID times to local time and flags unknown zones', () => {
+    const ny = Date.UTC(2026, 10, 4, 15, 0) // 10:00 EST (UTC-5) on 2026-11-04
+    const local = new Date(ny)
+    const day = new Date(local.getFullYear(), local.getMonth(), local.getDate())
+    const ok = wrap(ev('SUMMARY:A\r\nDTSTART;TZID=America/New_York:20261104T100000\r\nDTEND;TZID=America/New_York:20261104T110000'))
+    const r = parseIcs(ok, day, 0, 1440)
+    expect(r.events[0].start).toBe(local.getHours() * 60 + local.getMinutes())
+    const bad = parseIcs(wrap(ev('SUMMARY:B\r\nDTSTART;TZID=Mars/Base:20261104T100000')), today, 0, 1440)
+    expect(bad.events).toEqual([])
+    expect(bad.warnings[0]).toMatch(/unknown time zone/)
   })
 
-  test('input that is not a calendar returns an error', () => {
-    expect(parseIcs('hello', '2026-11-03')).toEqual({ events: [], errors: ['No VEVENT found'] })
+  it('expands DAILY/WEEKLY recurrence with INTERVAL, BYDAY, UNTIL, COUNT, EXDATE; flags unsupported', () => {
+    const rr = (rule: string, extra = '') => wrap(ev(`SUMMARY:R\r\nDTSTART:20261101T100000\r\nDTEND:20261101T103000\r\nRRULE:${rule}${extra}`))
+    const n = (ics: string) => parseIcs(ics, today, 540, 1320).events.length // 2026-11-04 is a Wednesday
+    expect(n(rr('FREQ=DAILY'))).toBe(1)
+    expect(n(rr('FREQ=DAILY;INTERVAL=2'))).toBe(0) // Nov 1, 3, 5
+    expect(n(rr('FREQ=DAILY;INTERVAL=3'))).toBe(1) // Nov 1, 4
+    expect(n(rr('FREQ=WEEKLY;BYDAY=WE'))).toBe(1)
+    expect(n(rr('FREQ=WEEKLY;BYDAY=MO,TU'))).toBe(0)
+    expect(n(rr('FREQ=DAILY;UNTIL=20261103T000000Z'))).toBe(0)
+    expect(n(rr('FREQ=DAILY;COUNT=3'))).toBe(0)
+    expect(n(rr('FREQ=DAILY;COUNT=4'))).toBe(1)
+    expect(n(rr('FREQ=DAILY', '\r\nEXDATE:20261104T100000'))).toBe(0)
+    const m = parseIcs(rr('FREQ=MONTHLY'), today, 540, 1320)
+    expect(m.events).toEqual([])
+    expect(m.warnings[0]).toMatch(/repeats/)
+    expect(m.errors).toEqual([])
+    expect(parseIcs(rr('FREQ=DAILY'), today, 540, 1320).events[0]).toMatchObject({ start: 600, end: 630 })
   })
-})
 
-describe('parseIcs real-world exports', () => {
-  const d = '2026-11-03'
-  const e = (x: string) => wrap(ev(`UID:u\r\nSUMMARY:S\r\n${x}`))
-  test('nested VALARM properties do not overwrite the event', () => {
-    const r = parseIcs(e('DTSTART:20261103T090000\r\nDTEND:20261103T100000\r\nBEGIN:VALARM\r\nSUMMARY:alarm\r\nDTSTART:20261103T080000\r\nEND:VALARM\r\n'), d)
-    expect(r.events).toEqual([{ id: 'u', title: 'S', start: 540, end: 600 }])
+  it('honours DURATION, skips CANCELLED, and handles events spanning midnight', () => {
+    const d = parseIcs(wrap(ev('SUMMARY:D\r\nDTSTART:20261104T100000\r\nDURATION:PT30M')), today, 540, 1320)
+    expect(d.events[0]).toMatchObject({ start: 600, end: 630 })
+    const c = parseIcs(wrap(ev('SUMMARY:C\r\nSTATUS:CANCELLED\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000')), today, 540, 1320)
+    expect(c.events).toEqual([])
+    const o = parseIcs(wrap(ev('SUMMARY:O\r\nDTSTART:20261103T230000\r\nDTEND:20261104T100000')), today, 540, 1320)
+    expect(o.events[0]).toMatchObject({ start: 540, end: 600 })
   })
-  test('cancelled events are skipped', () => {
-    expect(parseIcs(e('STATUS:CANCELLED\r\nDTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n'), d).events).toEqual([])
+
+  it('reports truncated or unterminated files instead of importing nothing silently', () => {
+    expect(parseIcs('BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:X\r\nDTSTART:20261104T100000', today, 540, 1320).errors.join(' ')).toMatch(/END:VEVENT/)
+    expect(parseIcs('BEGIN:VCALENDAR\r\nfoo\r\n', today, 540, 1320).errors.join(' ')).toMatch(/truncated/)
   })
-  test('recurring events are reported, not silently dropped', () => {
-    const r = parseIcs(e('RRULE:FREQ=WEEKLY\r\nDTSTART:20261027T090000\r\nDTEND:20261027T100000\r\n'), d)
+
+  it('uses wall-clock minutes (DST-safe) via local getters', () => {
+    const spring = new Date(2026, 2, 8)
+    const r = parseIcs(wrap(ev('SUMMARY:S\r\nDTSTART:20260308T100000\r\nDTEND:20260308T110000')), spring, 0, 1440)
+    expect(r.events[0]).toMatchObject({ start: 600, end: 660 })
+  })
+
+  it('applies UNTIL given as a UTC instant to the instance time', () => {
+    const rr = (until: string) => wrap(ev(`SUMMARY:U\r\nDTSTART:20261101T100000\r\nDTEND:20261101T110000\r\nRRULE:FREQ=DAILY;UNTIL=${until}`))
+    const inst = new Date(2026, 10, 4, 10, 0).getTime()
+    const z = (t: number) => new Date(t).toISOString().replace(/[-:]|\.\d+/g, '')
+    expect(parseIcs(rr(z(inst - 60_000)), today, 540, 1320).events).toHaveLength(0)
+    expect(parseIcs(rr(z(inst + 60_000)), today, 540, 1320).events).toHaveLength(1)
+  })
+
+  it('ignores VALARM properties inside an event', () => {
+    const e = ev('SUMMARY:V\r\nDTSTART:20261104T100000\r\nBEGIN:VALARM\r\nDURATION:PT5M\r\nEND:VALARM')
+    expect(parseIcs(wrap(e), today, 540, 1320).events[0]).toMatchObject({ start: 600, end: 660 })
+  })
+
+  it('imports nothing from a file with structural errors', () => {
+    const r = parseIcs('BEGIN:VCALENDAR\r\n' + ev('SUMMARY:Good\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000') + ev('SUMMARY:Bad\r\nDTSTART:garbage'), today, 540, 1320)
+    expect(r.errors.length).toBeGreaterThan(0)
     expect(r.events).toEqual([])
-    expect(r.errors[0]).toMatch(/Recurring/)
   })
-  test('DURATION replaces DTEND', () => {
-    expect(parseIcs(e('DTSTART:20261103T090000\r\nDURATION:PT1H30M\r\n'), d).events[0]).toMatchObject({ start: 540, end: 630 })
-  })
-  test('invalid requested or event dates give errors; case-insensitive BEGIN; duplicate uids get unique ids', () => {
-    expect(parseIcs(e('DTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n'), '2026-02-31').errors).toHaveLength(1)
-    expect(parseIcs(e('DTSTART:20261303T090000\r\nDTEND:20261303T100000\r\n'), d).errors).toHaveLength(1)
-    const lower = parseIcs('begin:vcalendar\nbegin:vevent\nuid:q\nsummary:L\ndtstart:20261103T090000\ndtend:20261103T100000\nend:vevent\n', d)
-    expect(lower.events).toHaveLength(1)
-    const dup = parseIcs(wrap(ev('UID:a\r\nDTSTART:20261103T090000\r\nDTEND:20261103T100000\r\n') + ev('UID:a\r\nDTSTART:20261103T110000\r\nDTEND:20261103T120000\r\n')), d)
-    expect(new Set(dup.events.map((x) => x.id)).size).toBe(2)
+
+  it('skips a recurring TZID event whose zone differs from local, with a warning', () => {
+    const other = new Date().getTimezoneOffset() === 0 ? 'Asia/Kolkata' : 'UTC'
+    const r = parseIcs(wrap(ev(`SUMMARY:Z\r\nDTSTART;TZID=${other}:20261101T100000\r\nDTEND;TZID=${other}:20261101T110000\r\nRRULE:FREQ=DAILY`)), today, 0, 1440)
+    expect(r.events).toEqual([])
+    expect(r.warnings[0]).toMatch(/different time zone/)
   })
 })
 
-describe('parseIcs second-review fixes', () => {
-  const d = '2026-11-03'
-  const e = (x: string) => wrap(ev(`UID:u\r\nSUMMARY:S\r\n${x}`))
-  test('DURATION uses wall-clock time on DST days', () => {
-    for (const tz of ['America/New_York', 'UTC']) {
-      vi.stubEnv('TZ', tz)
-      const r = parseIcs(e('DTSTART:20260308T080000\r\nDURATION:PT1H\r\n'), '2026-03-08')
-      expect(r.events[0]).toMatchObject({ start: 480, end: 540 })
-    }
-    vi.unstubAllEnvs()
+describe('parseIcs hardening (from this branch\'s own reviews)', () => {
+  const day = new Date(2026, 10, 4)
+  const win = (t: string) => parseIcs(t, day, 0, 1440)
+  it('unique ids: UID-based, duplicates and collisions get distinct ids', () => {
+    const one = 'UID:a\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000'
+    const r = win(wrap(ev(one) + ev(one) + ev(one) + ev('UID:a#2\r\nDTSTART:20261104T120000\r\nDTEND:20261104T130000')))
+    expect(r.events).toHaveLength(4)
+    expect(new Set(r.events.map((e) => e.id)).size).toBe(4)
+    expect(r.events[0].id).toBe('a')
   })
-  test('weeks, and empty durations are skipped', () => {
-    expect(parseIcs(e('DTSTART:20261103T090000\r\nDURATION:P1W\r\n'), d).errors).toEqual([])
-    expect(parseIcs(e('DTSTART:20261103T100000\r\nDURATION:PT\r\n'), d).events).toEqual([])
+  it('an unclosed VALARM does not swallow the next event', () => {
+    const open = 'BEGIN:VEVENT\r\nUID:y\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000\r\nBEGIN:VALARM\r\nEND:VEVENT\r\n'
+    const r = win(wrap(open + ev('UID:w\r\nDTSTART:20261104T120000\r\nDTEND:20261104T130000')))
+    expect(r.events.map((e) => e.id)).toEqual(['y', 'w'])
   })
-  test('three duplicate uids get three distinct ids', () => {
-    const one = 'UID:a\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\n'
-    const r = parseIcs(wrap(ev(one) + ev(one) + ev(one) + ev('UID:a#2\r\nDTSTART:20261103T120000\r\nDTEND:20261103T130000\r\n')), d)
-    expect(new Set(r.events.map((x) => x.id)).size).toBe(4)
+  it('impossible dates are errors, and so is an invalid requested day', () => {
+    expect(win(wrap(ev('DTSTART:20261303T090000\r\nDTEND:20261303T100000'))).errors).toHaveLength(1)
+    expect(win(wrap(ev('DTSTART:20260231T090000\r\nDTEND:20260231T100000'))).errors).toHaveLength(1)
+    expect(parseIcs(wrap(''), new Date(NaN), 0, 1440).errors).toEqual(['Invalid date.'])
   })
-  test('unclosed events are reported', () => {
-    expect(parseIcs(wrap('BEGIN:VEVENT\r\nUID:z\r\nDTSTART:20261103T100000\r\n'), d).errors[0]).toMatch(/missing END/)
-    const alarm = 'BEGIN:VEVENT\r\nUID:y\r\nDTSTART:20261103T100000\r\nDTEND:20261103T110000\r\nBEGIN:VALARM\r\nEND:VEVENT\r\n'
-    expect(parseIcs(wrap(alarm + ev('UID:w\r\nDTSTART:20261103T120000\r\nDTEND:20261103T130000\r\n')), d).events.map((x) => x.id)).toEqual(['y', 'w'])
+  it('P1W durations and DURATION on a DST day use real elapsed time', () => {
+    expect(win(wrap(ev('DTSTART:20261104T090000\r\nDURATION:P1W'))).errors).toEqual([])
+    const spring = new Date(2026, 2, 8)
+    const r = parseIcs(wrap(ev('DTSTART:20260308T080000\r\nDURATION:PT1H')), spring, 0, 1440)
+    expect(r.events[0]).toMatchObject({ start: 480, end: 540 })
   })
 })

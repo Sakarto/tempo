@@ -1,91 +1,166 @@
+// Recurrence/TZID/all-or-nothing import ported from the parallel run (PR #7); unique ids, VALARM reset and date checks added here.
 import type { FixedEvent } from './scheduler'
 
-export interface IcsResult { events: FixedEvent[]; errors: string[] }
+/** errors = the file is bad, import nothing. warnings = some events were skipped on purpose, the rest import. */
+export type IcsResult = { events: FixedEvent[]; errors: string[]; warnings: string[] }
+type Prop = { prop: string; value: string }
+type Raw = Record<string, Prop[]>
 
-const DT = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(Z?)$/
+// shortcut: recurrence supports DAILY/WEEKLY (INTERVAL, BYDAY, UNTIL, COUNT, EXDATE) only; no RECURRENCE-ID overrides,
+// no overnight recurring spill-over, DST drift of recurring instances ignored. Upgrade when real calendars need it.
+const unescape = (s: string) => s.replace(/\\[nN]/g, ' ').replace(/\\([,;\\])/g, '$1')
+const MAX_BYTES = 2_000_000
+const DOW = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA']
+const midnightOf = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
 
-/** Local [date, minutes since midnight] for an iCal date-time. Floating and TZID times are taken as written; Z is converted to local. */
-function parseDateTime(value: string): { date: string; minute: number; dayStart: number } | null {
-  const m = DT.exec(value)
-  if (!m) return null
-  const [y, mo, d, h, mi, s] = m.slice(1, 7).map(Number)
-  const when = m[7] ? new Date(Date.UTC(y, mo - 1, d, h, mi, s)) : new Date(y, mo - 1, d, h, mi, s)
-  if (Number.isNaN(when.getTime())) return null
-  const probe = m[7] ? new Date(Date.UTC(y, mo - 1, d)) : new Date(y, mo - 1, d)
-  if ((m[7] ? probe.getUTCMonth() : probe.getMonth()) !== mo - 1 || mo < 1 || h > 23 || mi > 59 || s > 59) return null
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const date = `${when.getFullYear()}-${pad(when.getMonth() + 1)}-${pad(when.getDate())}`
-  return { date, minute: when.getHours() * 60 + when.getMinutes(), dayStart: new Date(when.getFullYear(), when.getMonth(), when.getDate()).getTime() }
+/** Offset (ms) of `tz` from UTC at instant `t`. Throws RangeError for unknown zones. */
+function zoneOffset(tz: string, t: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' })
+      .formatToParts(new Date(t)).map((x) => [x.type, Number(x.value)]),
+  )
+  return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - Math.floor(t / 1000) * 1000
 }
 
-const DATE = /^(\d{4})-(\d{2})-(\d{2})$/
-const DURATION = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/i
+/** Stamp -> instant (as a Date), 'date' for all-day values, null when unreadable. Throws RangeError on unknown TZID. */
+function parseStamp({ prop, value }: Prop): Date | 'date' | null {
+  const v = value.trim()
+  if (/^\d{8}$/.test(v)) return 'date'
+  const m = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})?(Z?)$/.exec(v)
+  if (!m) return null
+  const [y, mo, d, h, mi, s] = m.slice(1, 7).map((x) => Number(x ?? 0))
+  if (mo < 1 || mo > 12 || d < 1 || d > new Date(Date.UTC(y, mo, 0)).getUTCDate() || h > 23 || mi > 59 || s > 59) return null
+  if (m[7]) return new Date(Date.UTC(y, mo - 1, d, h, mi, s))
+  const tz = /TZID=([^;:]+)/i.exec(prop)?.[1]
+  if (!tz) return new Date(y, mo - 1, d, h, mi, s) // floating = local
+  const wall = Date.UTC(y, mo - 1, d, h, mi, s)
+  let t = wall - zoneOffset(tz, wall)
+  t = wall - zoneOffset(tz, t)
+  return new Date(t)
+}
 
-const unescapeText = (s: string) => s.replace(/\\([,;nN\\])/g, (_, c: string) => (c === 'n' || c === 'N' ? ' ' : c))
+function parseDuration(v: string): number | null {
+  const m = /^P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v.trim())
+  if (!m) return null
+  const [w, d, h, mi, s] = m.slice(1).map((x) => Number(x ?? 0))
+  return (((w * 7 + d) * 24 + h) * 60 + mi) * 60_000 + s * 1000
+}
 
-/** Events of the .ics that fall on `date` (YYYY-MM-DD), clamped to that day. All-day events are skipped. */
-export function parseIcs(text: string, date: string): IcsResult {
-  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/)
-  const events: FixedEvent[] = []
-  const errors: string[] = []
-  let cur: Record<string, string> | null = null
-  let depth = 0 // nested components (VALARM, ...) inside a VEVENT; their properties are ignored
-  let count = 0
-  const seen = new Set<string>()
-  const parsed = DATE.exec(date)
-  const check = parsed && new Date(Number(parsed[1]), Number(parsed[2]) - 1, Number(parsed[3]))
-  if (!check || check.getMonth() !== Number(parsed[2]) - 1) return { events: [], errors: [`Invalid date: ${date}`] }
-  const dayStart = check.getTime()
-  for (const raw of lines) {
-    const line = raw.trim()
-    const upper = line.toUpperCase()
-    if (upper === 'BEGIN:VEVENT') {
-      if (cur) errors.push(`Event ${cur.UID ?? count} is missing END:VEVENT`)
-      cur = {}; depth = 0; count++; continue
-    }
-    if (cur && upper !== 'END:VEVENT' && upper.startsWith('BEGIN:')) { depth++; continue }
-    if (cur && depth > 0 && upper !== 'END:VEVENT') { if (upper.startsWith('END:')) depth--; continue }
-    if (upper === 'END:VEVENT' && cur) {
-      const fields = cur
-      cur = null
-      let id = fields.UID ?? `event-${count}`
-      if (fields.RRULE !== undefined) { errors.push(`Recurring event ${id} not expanded; add its occurrence manually`); continue }
-      if ((fields.STATUS ?? '').toUpperCase() === 'CANCELLED') continue
-      if (fields['DTSTART;VALUE'] === 'DATE' || /^\d{8}$/.test(fields.DTSTART ?? '')) continue
-      const s = parseDateTime(fields.DTSTART ?? '')
-      let e = parseDateTime(fields.DTEND ?? '')
-      const dur = DURATION.exec(fields.DURATION ?? '')
-      if (s && !e && dur) {
-        const total = Number(dur[1] ?? 0) * 10080 + Number(dur[2] ?? 0) * 1440 + Number(dur[3] ?? 0) * 60 + Number(dur[4] ?? 0)
-        // Wall-clock arithmetic via the local constructor so DST days don't shift the end.
-        const base = new Date(s.dayStart)
-        const endDate = new Date(base.getFullYear(), base.getMonth(), base.getDate(), 0, s.minute + total)
-        e = { date: '', minute: endDate.getHours() * 60 + endDate.getMinutes(), dayStart: new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate()).getTime() }
-      }
-      if (!s || !e) { errors.push(`Event ${id}: unreadable DTSTART/DTEND`); continue }
-      const start = Math.round((s.dayStart - dayStart) / 86_400_000) * 1440 + s.minute
-      const end = Math.round((e.dayStart - dayStart) / 86_400_000) * 1440 + e.minute
-      const clampedStart = Math.max(start, 0)
-      const clampedEnd = Math.min(end, 1440)
-      if (clampedEnd <= clampedStart) continue
-      const base = id
-      for (let n = 1; seen.has(id); ) id = `${base}#${++n}`
-      seen.add(id)
-      events.push({ id, title: unescapeText(fields.SUMMARY ?? '(no title)'), start: clampedStart, end: clampedEnd })
-      continue
-    }
-    if (!cur) continue
-    const colon = line.indexOf(':')
-    if (colon < 0) continue
-    const [name, ...params] = line.slice(0, colon).split(';')
-    const key = name.toUpperCase()
-    if (key === 'DTSTART' || key === 'DTEND') {
-      cur[key] = line.slice(colon + 1)
-      if (params.some((p) => p.toUpperCase() === 'VALUE=DATE')) cur[`${key};VALUE`] = 'DATE'
-    } else if (key === 'RRULE') cur.RRULE = line.slice(colon + 1)
-    else if (key === 'UID' || key === 'SUMMARY' || key === 'STATUS' || key === 'DURATION') cur[key] = line.slice(colon + 1)
+/** Does the recurrence rule produce an instance on local date `day`? null = unsupported rule. */
+function occursOn(rule: string, start: Date, day: Date, exdates: Set<number>): boolean | null {
+  const candidate = new Date(day.getFullYear(), day.getMonth(), day.getDate(), start.getHours(), start.getMinutes())
+  const r = Object.fromEntries(rule.split(';').map((kv) => kv.split('=') as [string, string]))
+  if (r.FREQ !== 'DAILY' && r.FREQ !== 'WEEKLY') return null
+  const interval = Math.max(1, Number(r.INTERVAL ?? 1) || 1)
+  const days = Math.round((day.getTime() - midnightOf(start).getTime()) / 86_400_000)
+  if (days < 0 || days > 3660) return days < 0 ? false : null
+  const until = r.UNTIL ? parseStamp({ prop: '', value: r.UNTIL.length === 8 ? r.UNTIL : r.UNTIL }) : null
+  const byday = r.BYDAY?.split(',').map((x) => x.slice(-2))
+  const hit = (n: number) => {
+    const d = new Date(midnightOf(start).getTime() + n * 86_400_000 + 12 * 3600_000)
+    if (r.FREQ === 'DAILY') return n % interval === 0 && (!byday || byday.includes(DOW[d.getDay()]))
+    const week = Math.floor((n + ((midnightOf(start).getDay() + 6) % 7)) / 7)
+    return week % interval === 0 && (byday ?? [DOW[start.getDay()]]).includes(DOW[d.getDay()])
   }
-  if (cur) errors.push(`Event ${cur.UID ?? count} is missing END:VEVENT`)
-  if (count === 0) return { events: [], errors: ['No VEVENT found'] }
-  return { events, errors }
+  const untilDay = until instanceof Date ? Infinity : r.UNTIL && /^\d{8}$/.test(r.UNTIL) ? midnightOf(new Date(+r.UNTIL.slice(0, 4), +r.UNTIL.slice(4, 6) - 1, +r.UNTIL.slice(6, 8))).getTime() : Infinity
+  if (until instanceof Date && candidate.getTime() > until.getTime()) return false
+  if (day.getTime() > untilDay || exdates.has(day.getTime()) || !hit(days)) return false
+  if (r.COUNT) {
+    let seen = 0
+    for (let n = 0; n <= days; n++) if (hit(n)) seen++
+    return seen <= Number(r.COUNT)
+  }
+  return true
+}
+
+/** Events overlapping `day` (a local date), as wall-clock minutes since midnight clipped to [dayStart, dayEnd]. */
+export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: number): IcsResult {
+  if (Number.isNaN(day.getTime())) return { events: [], errors: ['Invalid date.'], warnings: [] }
+  if (text.length > MAX_BYTES) return { events: [], errors: ['That file is too large (limit 2 MB).'], warnings: [] }
+  if (!/BEGIN:VCALENDAR/i.test(text)) return { events: [], errors: ['This file is not an iCalendar (.ics) file.'], warnings: [] }
+  const errors: string[] = []
+  const warnings: string[] = []
+  if (!/END:VCALENDAR/i.test(text)) errors.push('The file looks truncated (no END:VCALENDAR).')
+  const lines = text.replace(/\r?\n[ \t]/g, '').split(/\r?\n/).map((l) => l.trimEnd())
+  const events: FixedEvent[] = []
+  const today = midnightOf(day)
+  let cur: Raw | null = null
+  let n = 0
+  let inAlarm = false
+  const seen = new Set<string>()
+  const uniqueId = (uid: string | undefined) => {
+    const base = uid?.trim() || 'event'
+    let id = base
+    for (let k = 1; seen.has(id); ) id = `${base}#${++k}`
+    seen.add(id)
+    return id
+  }
+
+  const finish = (c: Raw) => {
+    const first = (k: string) => c[k]?.[0]
+    const title = unescape(first('SUMMARY')?.value ?? '').trim() || 'Event'
+    const label = `Event ${n} ("${title}")`
+    if (first('STATUS')?.value.trim().toUpperCase() === 'CANCELLED') return
+    try {
+      const sp = first('DTSTART')
+      const s = sp && parseStamp(sp)
+      if (s === 'date') return // all-day events don't block time
+      if (!s) return void errors.push(`${label} has an unreadable start time and was skipped.`)
+      const ep = first('DTEND')
+      const dur = first('DURATION') && parseDuration(first('DURATION')!.value)
+      const e = ep ? parseStamp(ep) : new Date(s.getTime() + (dur || 3600_000))
+      if (e === 'date' || !e || e <= s) return void errors.push(`${label} has an unreadable end time and was skipped.`)
+      let a = s, b = e
+      const rule = first('RRULE')?.value
+      if (rule) {
+        const ex = new Set<number>()
+        for (const p of c.EXDATE ?? []) for (const v of p.value.split(',')) {
+          const x = parseStamp({ prop: p.prop, value: v })
+          if (x instanceof Date) ex.add(midnightOf(x).getTime())
+          else if (x === 'date') ex.add(new Date(+v.slice(0, 4), +v.slice(4, 6) - 1, +v.slice(6, 8)).getTime())
+        }
+        const tz = /TZID=([^;:]+)/i.exec(sp!.prop)?.[1]
+        if (tz && zoneOffset(tz, s.getTime()) !== -s.getTimezoneOffset() * 60_000)
+          return void warnings.push(`${label} repeats in a different time zone than yours and was skipped.`)
+        const hit = occursOn(rule, s, today, ex)
+        if (hit === null) return void warnings.push(`${label} repeats in a way Tempo can't read yet, so it was skipped.`)
+        if (!hit) return
+        a = new Date(today.getFullYear(), today.getMonth(), today.getDate(), s.getHours(), s.getMinutes())
+        b = new Date(a.getTime() + (e.getTime() - s.getTime()))
+      }
+      // wall-clock minutes on `today`; other days clip to the window
+      const min = (d: Date, whenOtherDay: number, before: boolean) => {
+        const dm = midnightOf(d).getTime()
+        if (dm === today.getTime()) return d.getHours() * 60 + d.getMinutes()
+        return (dm < today.getTime()) === before ? whenOtherDay : -1
+      }
+      const sm = min(a, dayStart, true)
+      const em = min(b, dayEnd, false)
+      if (sm < 0 || em < 0) return // starts after today or ended before today
+      const start = Math.max(dayStart, sm)
+      const end = Math.min(dayEnd, em)
+      if (end > start) events.push({ id: uniqueId(first('UID')?.value), title, start, end })
+    } catch (err) {
+      if (err instanceof RangeError) warnings.push(`${label} uses an unknown time zone and was skipped.`)
+      else errors.push(`${label} could not be read and was skipped.`)
+    }
+  }
+
+  for (const line of lines) {
+    if (/^BEGIN:VEVENT/i.test(line)) {
+      if (cur) errors.push(`Event ${n} is missing END:VEVENT and was skipped.`)
+      cur = {}; n++; inAlarm = false; continue
+    }
+    if (/^END:VEVENT/i.test(line)) { if (cur) finish(cur); cur = null; inAlarm = false; continue }
+    if (/^BEGIN:VALARM/i.test(line)) { inAlarm = true; continue }
+    if (/^END:VALARM/i.test(line)) { inAlarm = false; continue }
+    if (!cur || inAlarm) continue
+    const i = line.indexOf(':')
+    if (i < 0) continue
+    const prop = line.slice(0, i)
+    const key = prop.split(';')[0].toUpperCase()
+    ;(cur[key] ??= []).push({ prop, value: line.slice(i + 1) })
+  }
+  if (cur) errors.push(`Event ${n} is missing END:VEVENT and was skipped.`)
+  return { events: errors.length ? [] : events.sort((x, y) => x.start - y.start), errors, warnings }
 }
