@@ -66,3 +66,18 @@ it('tells the user when IndexedDB cannot be loaded', async () => {
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not load')
   indexedDB.open = orig
 })
+
+it('imports today events from an .ics file and keeps data on a bad file', async () => {
+  const u = userEvent.setup()
+  render(<App />)
+  await screen.findByRole('form', { name: 'Add event' })
+  const d = new Date()
+  const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  const ics = `BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nSUMMARY:Lecture\r\nDTSTART:${ymd}T100000\r\nDTEND:${ymd}T110000\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n`
+  await u.upload(screen.getByLabelText('Import .ics'), new File([ics], 'cal.ics', { type: 'text/calendar' }))
+  expect(await screen.findByText(/10:00–11:00 Lecture \(fixed\)/)).toBeInTheDocument()
+  expect(screen.getByRole('status')).toHaveTextContent('Imported 1 event')
+  await u.upload(screen.getByLabelText('Import .ics'), new File(['nonsense'], 'bad.ics'))
+  expect(await screen.findByRole('alert')).toHaveTextContent('not an iCalendar')
+  expect(screen.getByText(/Lecture/)).toBeInTheDocument()
+})

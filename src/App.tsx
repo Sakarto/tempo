@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
+import { parseIcs } from './core/ics'
 import { schedule, type FixedEvent, type Task } from './core/scheduler'
 import { emptyState, loadState, saveState } from './store/db'
 
@@ -17,6 +18,7 @@ export default function App() {
   const [events, setEvents] = useState<FixedEvent[]>(emptyState.events)
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [fatal, setFatal] = useState('')
 
   useEffect(() => {
@@ -55,6 +57,17 @@ export default function App() {
     e.currentTarget.reset()
   }
 
+  async function importIcs(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    const r = parseIcs(await file.text(), new Date(), DAY_START, DAY_END)
+    if (r.events.length === 0 && r.errors.length > 0) return setError(r.errors.join(' '))
+    setError(r.errors.join(' '))
+    setNotice(`Imported ${r.events.length} event${r.events.length === 1 ? '' : 's'} for today.`)
+    setEvents([...events, ...r.events])
+  }
+
   const timeline = [
     ...events.map((ev) => ({ key: ev.id, start: ev.start, end: ev.end, title: ev.title, fixed: true, del: () => setEvents(events.filter((x) => x.id !== ev.id)) })),
     ...plan.blocks.map((b) => ({ key: b.taskId, start: b.start, end: b.end, title: `${byId.get(b.taskId)!.title} · ${byId.get(b.taskId)!.category}`, fixed: false, del: () => setTasks(tasks.filter((x) => x.id !== b.taskId)) })),
@@ -80,6 +93,8 @@ export default function App() {
         <input name="end" type="time" required defaultValue="11:00" aria-label="Event end" />
         <button type="submit">Add event</button>
       </form>
+      <label>Import calendar (.ics) <input type="file" accept=".ics,text/calendar" onChange={importIcs} aria-label="Import .ics" /></label>
+      {notice && <p role="status">{notice}</p>}
       <h2>Today ({fmt(DAY_START)}–{fmt(DAY_END)})</h2>
       <ol aria-label="Timeline">
         {timeline.map((b) => (
