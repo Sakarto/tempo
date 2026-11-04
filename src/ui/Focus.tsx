@@ -25,7 +25,7 @@ export function Focus({ head, timer, nowMs, canStart, onToggle, onExtend, onDone
   const [after, setAfter] = useState<{ reward?: string } | null>(null)
   const [breakUntil, setBreakUntil] = useState<number | null>(null)
   const checkInRef = useRef<HTMLButtonElement>(null)
-  const breakRef = useRef<HTMLButtonElement>(null)
+  const breakRef = useRef<HTMLDivElement>(null)
 
   const spent = spentMs(head, timer, nowMs)
   const remaining = head ? head.duration * 60_000 - spent : 0
@@ -43,7 +43,7 @@ export function Focus({ head, timer, nowMs, canStart, onToggle, onExtend, onDone
       const t = e.target instanceof HTMLElement ? e.target : null
       if (e.key === 'Escape' && t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) { t.blur(); return } // leave a field so shortcuts work again
       const action = shortcutFor(
-        { key: e.key, tag: t?.tagName ?? 'BODY', editable: Boolean(t?.isContentEditable), repeat: e.repeat, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
+        { key: e.key, code: e.code, tag: t?.tagName ?? 'BODY', editable: Boolean(t?.isContentEditable), repeat: e.repeat, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
         { hasHead: Boolean(head), started, canStart, checkIn },
       )
       if (!action) return
@@ -65,11 +65,11 @@ export function Focus({ head, timer, nowMs, canStart, onToggle, onExtend, onDone
       <h2 id="focus-h">Focus</h2>
 
       {after && (
-        <div className="panel" role="region" aria-label="Break">
+        <div className="panel" role="region" aria-label="Break" ref={breakRef} tabIndex={-1}>
           {after.reward && <p className="reward" role="status">Reward time: <strong>{after.reward}</strong></p>}
           <p>Take a break?</p>
           <div className="row">
-            <button ref={breakRef} onClick={() => startBreak(5)}>Break 5 min</button>
+            <button onClick={() => startBreak(5)}>Break 5 min</button>
             <button onClick={() => startBreak(10)}>Break 10 min</button>
             <button className="secondary" onClick={() => setAfter(null)}>Skip break</button>
           </div>

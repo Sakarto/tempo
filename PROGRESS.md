@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 8/13 · Next up: F09 · Blocked: none
+- Passing features: 9/13 · Next up: F10 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,13 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-04 — F09: Keyboard shortcuts
+- Did: `src/ui/keys.ts` (pure `shortcutFor`), key handler + hint in `src/ui/Focus.tsx`. Space start/pause, D done, E +15; Escape leaves a field.
+- Evidence: `npm test` 95 pass; Playwright keyboard-only flow (type tasks, Escape, Space/pause/E/D, no firing while typing, Ctrl+D ignored, Cyrillic layout), no console errors; evidence/f09-keyboard.png (untracked)
+- Review: 1 fresh cycle; 2 should-fix (D then Space started a break and lost the reward reminder; non-Latin layouts) fixed + tested + re-verified in browser
+- Accepted: D/E only apply once the task is started (avoids accidental completion); synthetic double keydown in one JS task can double-fire (not reproducible with real key presses)
+- Next: F10 stats page
+
 ### 2026-11-04 — .ics import ported from the parallel run (PR #7) into this line
 - Owner chose to keep this line and port PR #7. Ported its recurrence (DAILY/WEEKLY: INTERVAL, BYDAY, UNTIL, COUNT, EXDATE), TZID conversion and all-or-nothing import, with its tests; then 3 fresh-review cycles hardened it (RECURRENCE-ID overrides, midnight-crossing and UTC series, per-instance zones and DST, WKST, zero-length events, CR files, cross-zone EXDATE, invalid rule values warn, perf for old series).
 - Behavior changes vs my earlier parser: structural problems now import nothing (errors) while deliberate skips only warn; recurring events in another zone are converted, not skipped; DTEND-less events default to 60 min.

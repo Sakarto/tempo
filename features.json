@@ -105,7 +105,7 @@
         "D completes the task",
         "E extends 15 min"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F10",
