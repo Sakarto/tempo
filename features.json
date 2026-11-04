@@ -1,0 +1,135 @@
+{
+  "features": [
+    {
+      "id": "F01",
+      "category": "core",
+      "priority": 1,
+      "description": "Scheduler: tasks are laid into free gaps around fixed events in priority order; what doesn't fit is overflow; durations never shrink",
+      "steps": [
+        "Given events 10:00-11:00 and tasks 60,60,90 starting 09:00, no task overlaps the event",
+        "A task longer than every gap goes to overflow, unchanged",
+        "Unit tests in src/core/scheduler.test.ts pass"
+      ],
+      "passes": true
+    },
+    {
+      "id": "F02",
+      "category": "core",
+      "priority": 2,
+      "description": "Plan today: add tasks (title, category, 15/30/60/90 estimate, priority) and fixed events in the UI and see the timeline plus overflow, persisted across reload",
+      "steps": [
+        "Add 5 tasks and 1 event",
+        "Timeline shows blocks in order and an overflow list",
+        "Reload: everything still there"
+      ],
+      "passes": true
+    },
+    {
+      "id": "F03",
+      "category": "core",
+      "priority": 3,
+      "description": "Import a Google Calendar .ics file as today's fixed events",
+      "steps": [
+        "Choose a .ics file with 3 events",
+        "Events for today appear in the plan",
+        "Malformed file shows an error, data unchanged"
+      ],
+      "passes": true
+    },
+    {
+      "id": "F04",
+      "category": "core",
+      "priority": 4,
+      "description": "Focus session: Start runs a big countdown for the current block and a stopwatch of real time; Space starts/pauses; survives reload",
+      "steps": [
+        "Press Start: countdown and stopwatch tick",
+        "Space pauses",
+        "Reload mid-session: timer continues from real elapsed time"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F05",
+      "category": "core",
+      "priority": 5,
+      "description": "Check-in at block end with Done, +15, +30, Stuck/switch; the rest of today re-flows immediately; keys D and E",
+      "steps": [
+        "When countdown reaches 0 the check-in appears",
+        "+15 shifts every later task 15 min and overflow grows",
+        "Done logs the session and starts the next block"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F06",
+      "category": "core",
+      "priority": 6,
+      "description": "Break offer after check-in (5-10 min) that can be skipped; skip is logged",
+      "steps": [
+        "After Done a Break/Skip break choice appears",
+        "Skip break is recorded on the session"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F07",
+      "category": "learning",
+      "priority": 7,
+      "description": "Session log + stats page: estimate vs actual by category, focus minutes per day, streak",
+      "steps": [
+        "Complete sessions in two categories",
+        "Stats page shows ratio per category and minutes per day",
+        "Streak counts consecutive days with a session"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F08",
+      "category": "learning",
+      "priority": 8,
+      "description": "Personal multiplier: with >= 3 sessions in a category, new tasks show a suggested estimate (median ratio) the user can accept or override",
+      "steps": [
+        "Log 3 sessions at ratio 1.5 in 'study'",
+        "Adding a 30 min study task suggests 45 (snapped 60 shown as nearest block)",
+        "User can keep the original"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F09",
+      "category": "data",
+      "priority": 9,
+      "description": "Export all data as JSON and sessions as CSV in one click; import CSV time log (date,task,category,estimate_min,actual_min,extended_min,distracted,energy_1to5,note)",
+      "steps": [
+        "Export downloads valid JSON and CSV",
+        "Import a CSV with 4 rows adds 4 sessions",
+        "Bad rows are reported, good rows imported"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F10",
+      "category": "core",
+      "priority": 10,
+      "description": "Rewards: optional reward on a task is shown at check-in when the task is done",
+      "steps": [
+        "Add a task with reward '10 min YouTube'",
+        "Press Done",
+        "Check-in reminds the reward"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F11",
+      "category": "platform",
+      "priority": 11,
+      "description": "Installable PWA that works offline, usable at 375px",
+      "steps": [
+        "Production build registers a service worker and precaches the app",
+        "Page loads with network blocked",
+        "No horizontal scroll at 375px"
+      ],
+      "passes": false
+    }
+  ]
+}
