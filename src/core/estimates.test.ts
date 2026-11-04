@@ -38,4 +38,20 @@ describe('estimates', () => {
     const log = [s('z', 0, 30), s('z', 60, 0), s('z', 60, 60), s('z', 60, 60)]
     expect(categoryMultiplier(log, 'z')).toBeNull()
   })
+
+  test('non-finite values never produce a suggestion that is not a 15-minute block', () => {
+    const inf = [s('a', 1, Infinity), s('a', 1, Infinity), s('a', 1, Infinity)]
+    expect(categoryMultiplier(inf, 'a')).toBeNull()
+    const ok = [s('a', 60, 60), s('a', 60, 60), s('a', 60, 60)]
+    expect(suggestEstimate(ok, 'a', NaN)).toBeNull()
+    expect(suggestEstimate(ok, 'a', Infinity)).toBeNull()
+    expect(suggestEstimate(ok, 'a', 0)).toBeNull()
+    expect(suggestEstimate(ok, 'a', -5)).toBeNull()
+  })
+
+  test('category names match ignoring case and surrounding whitespace', () => {
+    const log = [s('Writing', 60, 90), s('writing ', 60, 90), s(' WRITING', 60, 90)]
+    expect(suggestEstimate(log, 'writing', 60)).toBe(90)
+    expect(suggestEstimate(log, 'Writing  ', 60)).toBe(90)
+  })
 })
