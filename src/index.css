@@ -27,3 +27,5 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .panel { border: 2px solid var(--accent); border-radius: 8px; padding: 12px; margin: 12px 0; }
 .overflow { margin-top: 16px; border: 2px dashed var(--warn); border-radius: 8px; padding: 8px 12px; }
 .warn { color: var(--warn); }
+.hint { font-size: 14px; margin: 0 0 8px; }
+kbd { font: inherit; font-size: 12px; padding: 1px 6px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; background: var(--bg); }

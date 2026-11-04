@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { PlanTask } from '../core/plan'
 import { spentMs } from '../core/day'
+import { shortcutFor } from './keys'
 import type { TimerState } from '../core/timer'
 
 const mmss = (ms: number) => {
@@ -35,6 +36,26 @@ export function Focus({ head, timer, nowMs, canStart, onToggle, onExtend, onDone
   useEffect(() => { if (after) breakRef.current?.focus() }, [after])
 
   const finishWith = (fn: () => string | undefined | void) => setAfter({ reward: fn() ?? undefined })
+
+  // Keyboard-only flow: Space start/pause, D done, E +15 min (see shortcutFor for when each applies).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target instanceof HTMLElement ? e.target : null
+      if (e.key === 'Escape' && t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA')) { t.blur(); return } // leave a field so shortcuts work again
+      const action = shortcutFor(
+        { key: e.key, tag: t?.tagName ?? 'BODY', editable: Boolean(t?.isContentEditable), repeat: e.repeat, ctrl: e.ctrlKey, alt: e.altKey, meta: e.metaKey },
+        { hasHead: Boolean(head), started, canStart, checkIn },
+      )
+      if (!action) return
+      e.preventDefault()
+      if (action === 'toggle') onToggle()
+      else if (action === 'done') finishWith(onDone)
+      else onExtend(15)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
   const startBreak = (min: number) => { setBreakUntil(Date.now() + min * 60_000); setAfter(null) }
   const breakLeft = breakUntil === null ? 0 : breakUntil - nowMs
   const onBreak = breakUntil !== null && breakLeft > 0
@@ -62,6 +83,7 @@ export function Focus({ head, timer, nowMs, canStart, onToggle, onExtend, onDone
         </div>
       )}
 
+      <p className="muted hint"><kbd>Space</kbd> start/pause · <kbd>D</kbd> done · <kbd>E</kbd> +15 min</p>
       {!head ? <p className="muted">No task to focus on. Add one in the plan.</p> : (
         <div>
           <p className="current">{head.title} <span className="muted">({head.category})</span></p>
