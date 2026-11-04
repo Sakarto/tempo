@@ -209,3 +209,69 @@ describe('parseIcs second-review fixes', () => {
     expect(r.warnings[0]).toMatch(/can't read/)
   })
 })
+
+describe('parseIcs third pass', () => {
+  const win = (t: string, d: Date) => parseIcs(t, d, 0, 1440)
+  const localMin = (ms: number) => new Date(ms).getHours() * 60 + new Date(ms).getMinutes()
+  const dayOf = (ms: number) => new Date(new Date(ms).getFullYear(), new Date(ms).getMonth(), new Date(ms).getDate())
+
+  it('an exclusion or override written in another zone removes the correct instance', () => {
+    // Series: daily 23:00Z. RECURRENCE-ID 2026-09-04 11:00 Auckland (NZST+12) = 2026-09-03 23:00Z.
+    const text = wrap(
+      ev('UID:s\r\nSUMMARY:Base\r\nDTSTART:20260901T230000Z\r\nDTEND:20260902T000000Z\r\nRRULE:FREQ=DAILY') +
+        ev('UID:s\r\nSUMMARY:Gone\r\nSTATUS:CANCELLED\r\nRECURRENCE-ID;TZID=Pacific/Auckland:20260904T110000\r\nDTSTART:20260904T000000Z\r\nDTEND:20260904T010000Z'),
+    )
+    const removed = Date.UTC(2026, 8, 3, 23)
+    const kept = Date.UTC(2026, 8, 4, 23)
+    expect(win(text, dayOf(removed)).events.filter((e) => e.title === 'Base' && e.start === localMin(removed))).toEqual([])
+    expect(win(text, dayOf(kept)).events.some((e) => e.title === 'Base' && e.start === localMin(kept))).toBe(true)
+  })
+
+  it('a TZID series spanning a DST night ends at the right wall-clock time on a fall-back night', () => {
+    // New York nights run 22:00 -> 06:00 wall time in New York: 9 elapsed hours on Oct 31->Nov 1 (clocks fall back), 8 on Nov 1->2.
+    // Busy time is counted in the machine's wall-clock minutes. On a machine whose own clocks also fall back in this
+    // window (New York, Los Angeles) a day has no 25th hour, so the total is 16h; elsewhere it is the real 17h.
+    // A fixed 8h-or-9h duration reused for every instance would give 15h (New York) or 18h (e.g. Kolkata).
+    const ny = wrap(ev('SUMMARY:Sleep\r\nDTSTART;TZID=America/New_York:20261031T220000\r\nDTEND;TZID=America/New_York:20261101T060000\r\nRRULE:FREQ=DAILY;COUNT=2'))
+    let busy = 0
+    for (let d = 29; d <= 33; d++) { // local days Oct 29 .. Nov 2 in the machine's zone
+      for (const e of win(ny, new Date(2026, 9, d)).events) busy += e.end - e.start
+    }
+    const machineFallsBack = new Date(2026, 9, 31, 12).getTimezoneOffset() !== new Date(2026, 10, 2, 12).getTimezoneOffset()
+    expect(busy).toBe((machineFallsBack ? 16 : 17) * 60)
+  })
+
+  it('a nonexistent TZID time in the spring gap lands at the same instant as the equivalent post-transition time', () => {
+    const gap = wrap(ev('SUMMARY:G\r\nDTSTART;TZID=America/New_York:20260308T023000\r\nDTEND;TZID=America/New_York:20260308T043000'))
+    const real = wrap(ev('SUMMARY:G\r\nDTSTART;TZID=America/New_York:20260308T033000\r\nDTEND;TZID=America/New_York:20260308T043000'))
+    let a = 0
+    let b = 0
+    for (let d = 7; d <= 9; d++) {
+      for (const e of win(gap, new Date(2026, 2, d)).events) a += e.end - e.start
+      for (const e of win(real, new Date(2026, 2, d)).events) b += e.end - e.start
+    }
+    expect(a).toBe(b) // 02:30 (nonexistent) is read as 03:30 EDT, so the block is 1h, not 2h
+    expect(b).toBe(60)
+  })
+
+  it('warns on THISANDFUTURE overrides, RDATE and EXRULE; skips invalid rule values', () => {
+    const base = 'UID:s\r\nSUMMARY:B\r\nDTSTART:20261101T100000\r\nDTEND:20261101T110000\r\nRRULE:FREQ=DAILY'
+    const day = new Date(2026, 10, 4)
+    const tf = win(wrap(ev(base) + ev('UID:s\r\nRECURRENCE-ID;RANGE=THISANDFUTURE:20261103T100000\r\nDTSTART:20261103T140000\r\nDTEND:20261103T150000')), day)
+    expect(tf.warnings.join(' ')).toMatch(/future/)
+    expect(win(wrap(ev('SUMMARY:R\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000\r\nRDATE:20261105T100000')), day).warnings.join(' ')).toMatch(/RDATE/)
+    for (const bad of ['INTERVAL=0', 'INTERVAL=abc', 'COUNT=abc', 'COUNT=0', 'UNTIL=garbage', 'WKST=XX']) {
+      const r = win(wrap(ev(`SUMMARY:X\r\nDTSTART:20261101T100000\r\nDTEND:20261101T110000\r\nRRULE:FREQ=DAILY;${bad}`)), day)
+      expect([bad, r.events.length, r.warnings.length]).toEqual([bad, 0, 1])
+    }
+  })
+
+  it('handles thousands of long-running weekly series quickly', () => {
+    const one = (i: number) => ev(`UID:e${i}\r\nSUMMARY:E${i}\r\nDTSTART:19700107T090000\r\nDTEND:19700107T100000\r\nRRULE:FREQ=WEEKLY;BYDAY=WE,FR`)
+    const text = wrap(Array.from({ length: 2000 }, (_, i) => one(i)).join(''))
+    const t0 = Date.now()
+    const r = win(text, new Date(2026, 10, 4)) // a Wednesday
+    expect(r.events).toHaveLength(2000)
+    expect(Date.now() - t0).toBeLessThan(4000)
+  })
+})

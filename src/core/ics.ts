@@ -12,6 +12,7 @@ type Skip = { day: number; instant?: number }
 
 // shortcut: recurrence supports DAILY/WEEKLY (INTERVAL, BYDAY, WKST, UNTIL, COUNT, EXDATE, RECURRENCE-ID overrides) only.
 // Rules with other parts (BYMONTHDAY, BYSETPOS, ...) and FREQ=MONTHLY/YEARLY are skipped with a warning.
+// RDATE/EXRULE and RANGE=THISANDFUTURE overrides are ignored with a warning. A timed event with a date-only DTEND is a file error (all-or-nothing).
 // Windows zone names ("Eastern Standard Time") are unknown zones and skipped with a warning; upgrade by mapping to IANA.
 const unescape = (s: string) => s.replace(/\\[nN]/g, ' ').replace(/\\([,;\\])/g, '$1')
 const MAX_BYTES = 2_000_000
@@ -53,6 +54,8 @@ function toInstant(w: Wall): number {
   const wall = Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s)
   let t = wall - zoneOffset(w.tz!, wall)
   t = wall - zoneOffset(w.tz!, t)
+  // Nonexistent local time (spring-forward gap): use the offset from before the transition, like floating times do.
+  if (wall - t !== zoneOffset(w.tz!, t)) t = wall - zoneOffset(w.tz!, wall - DAY_MS)
   return t
 }
 
@@ -63,27 +66,34 @@ function parseDuration(v: string): number | null {
   return (((w * 7 + d) * 24 + h) * 60 + mi) * 60_000 + s * 1000
 }
 
+/** Exclusions as instants (compared with each instance's instant), or whole days for date-only values. */
 const skipKeys = (values: string, prop: string): Skip[] =>
   values.split(',').flatMap((v) => {
     const w = parseWall({ prop, value: v })
     if (!w) return []
-    return [{ day: dayNumber(w.y, w.mo, w.d), ...(w.kind === 'z' ? { instant: Date.UTC(w.y, w.mo - 1, w.d, w.h, w.mi, w.s) } : {}) }]
+    if (w.kind === 'date') return [{ day: dayNumber(w.y, w.mo, w.d) }]
+    try { return [{ day: dayNumber(w.y, w.mo, w.d), instant: toInstant(w) }] } catch { return [] } // unknown zone: cannot match
   })
 
 type Rule = Record<string, string>
 const parseRule = (rule: string): Rule => Object.fromEntries(rule.split(';').map((kv) => kv.split('=') as [string, string]))
 
-/** Does the rule have an instance on series-date N (days since epoch in the series' own calendar)? null = unsupported. */
-function ruleHit(r: Rule, startDay: number, N: number): boolean | null {
-  const n = N - startDay
-  if (n < 0) return false
-  const interval = Math.max(1, Number(r.INTERVAL ?? 1) || 1)
+/** Validated rule as a predicate "instance on series-date N?" (days since epoch in the series' calendar), or null if unsupported. */
+function compileRule(r: Rule, startDay: number): ((N: number) => boolean) | null {
+  if (r.FREQ !== 'DAILY' && r.FREQ !== 'WEEKLY') return null
+  if (Object.keys(r).some((k) => !ALLOWED_RULE_PARTS.has(k))) return null
+  if (r.INTERVAL !== undefined && !(/^\d+$/.test(r.INTERVAL) && Number(r.INTERVAL) >= 1)) return null
+  if (r.COUNT !== undefined && !(/^\d+$/.test(r.COUNT) && Number(r.COUNT) >= 1)) return null
+  if (r.WKST !== undefined && !DOW.includes(r.WKST)) return null
   const byday = r.BYDAY?.split(',')
-  if (byday?.some((x) => !/^(SU|MO|TU|WE|TH|FR|SA)$/.test(x))) return null
-  if (r.FREQ === 'DAILY') return n % interval === 0 && (!byday || byday.includes(DOW[dowOf(N)]))
-  const wkst = Math.max(0, DOW.indexOf(r.WKST ?? 'MO'))
-  const week = Math.floor((n + ((dowOf(startDay) - wkst + 7) % 7)) / 7)
-  return week % interval === 0 && (byday ?? [DOW[dowOf(startDay)]]).includes(DOW[dowOf(N)])
+  if (byday?.some((x) => !DOW.includes(x))) return null
+  const interval = Number(r.INTERVAL ?? 1)
+  const days = new Set(byday ? byday.map((x) => DOW.indexOf(x)) : [dowOf(startDay)])
+  const wkst = DOW.indexOf(r.WKST ?? 'MO')
+  const startDow = dowOf(startDay)
+  if (r.FREQ === 'DAILY') return (N) => N >= startDay && (N - startDay) % interval === 0 && (!byday || days.has(dowOf(N)))
+  const offset = (startDow - wkst + 7) % 7
+  return (N) => N >= startDay && Math.floor((N - startDay + offset) / 7) % interval === 0 && days.has(dowOf(N))
 }
 
 /** Events overlapping `day` (a local date), as wall-clock minutes since midnight clipped to [dayStart, dayEnd]. */
@@ -135,6 +145,7 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
   for (const { c } of raws) {
     const rid = c['RECURRENCE-ID']?.[0]
     const uid = c.UID?.[0]?.value.trim()
+    if (rid && /RANGE=THISANDFUTURE/i.test(rid.prop)) warnings.push(`Event "${unescape(c.SUMMARY?.[0]?.value ?? 'Event')}" changes this and all future repeats; Tempo applies it to one day only, so later days may be wrong.`)
     if (rid && uid) overridden.set(uid, [...(overridden.get(uid) ?? []), ...skipKeys(rid.value, rid.prop)])
   }
 
@@ -164,22 +175,27 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
       const e = ep ? (ew && ew.kind !== 'date' ? toInstant(ew) : NaN) : dur === null ? NaN : s + dur
       if (Number.isNaN(e) || e < s) { errors.push(`${label} has an unreadable end time and was skipped.`); continue }
       if (e === s) continue // zero-length events block no time
+      if (c.RDATE || c.EXRULE) warnings.push(`${label} uses RDATE/EXRULE, which Tempo ignores; some days may be wrong.`)
       const rule = first('RRULE')?.value
       if (!rule) { emit(s, e, title, uid); continue }
 
       const r = parseRule(rule)
       const startDay = dayNumber(w.y, w.mo, w.d)
-      if ((r.FREQ !== 'DAILY' && r.FREQ !== 'WEEKLY') || Object.keys(r).some((k) => !ALLOWED_RULE_PARTS.has(k)) || ruleHit(r, startDay, startDay) === null) {
+      const hit = compileRule(r, startDay)
+      const until = r.UNTIL ? parseWall({ prop: '', value: r.UNTIL }) : null
+      if (!hit || (r.UNTIL && !until)) {
         warnings.push(`${label} repeats in a way Tempo can't read yet, so it was skipped.`)
         continue
       }
       const skips = [...(overridden.get(uid?.trim() ?? '') ?? []), ...(c.EXDATE ?? []).flatMap((p) => skipKeys(p.value, p.prop))]
-      const until = r.UNTIL ? parseWall({ prop: '', value: r.UNTIL }) : null
       const durMs = e - s
+      // TZID/floating ends are rebuilt per instance (DST nights differ in length); Z ends and DURATION use elapsed time.
+      const endDays = ew && ew.kind !== 'z' && !durProp ? dayNumber(ew.y, ew.mo, ew.d) - startDay : null
       const span = Math.ceil(durMs / DAY_MS) + 1 // series-dates are in the series' zone, so look a little either side of today
       let count = 0
-      for (let N = startDay; N <= todayN + 1; N++) {
-        if (!ruleHit(r, startDay, N)) continue
+      // Without COUNT nothing depends on earlier instances, so only scan near today (the rule predicate is absolute).
+      for (let N = r.COUNT ? startDay : Math.max(startDay, todayN - span); N <= todayN + 1; N++) {
+        if (!hit(N)) continue
         count++
         if (r.COUNT && count > Number(r.COUNT)) break
         if (N < todayN - span) continue
@@ -189,7 +205,12 @@ export function parseIcs(text: string, day: Date, dayStart: number, dayEnd: numb
         if (until) {
           if (until.kind === 'date' ? N > dayNumber(until.y, until.mo, until.d) : until.kind === 'z' ? a > toInstant(until) : Date.UTC(inst.y, inst.mo - 1, inst.d, inst.h, inst.mi, inst.s) > Date.UTC(until.y, until.mo - 1, until.d, until.h, until.mi, until.s)) break
         }
-        emit(a, a + durMs, title, uid)
+        let b = a + durMs
+        if (endDays !== null && ew) {
+          const ed = new Date((N + endDays) * DAY_MS)
+          b = toInstant({ ...ew, y: ed.getUTCFullYear(), mo: ed.getUTCMonth() + 1, d: ed.getUTCDate() })
+        }
+        emit(a, b, title, uid)
       }
     } catch (err) {
       if (err instanceof RangeError) warnings.push(`${label} uses an unknown time zone and was skipped.`)

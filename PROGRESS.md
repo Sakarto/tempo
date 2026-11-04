@@ -12,6 +12,13 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-04 — .ics import ported from the parallel run (PR #7) into this line
+- Owner chose to keep this line and port PR #7. Ported its recurrence (DAILY/WEEKLY: INTERVAL, BYDAY, UNTIL, COUNT, EXDATE), TZID conversion and all-or-nothing import, with its tests; then 3 fresh-review cycles hardened it (RECURRENCE-ID overrides, midnight-crossing and UTC series, per-instance zones and DST, WKST, zero-length events, CR files, cross-zone EXDATE, invalid rule values warn, perf for old series).
+- Behavior changes vs my earlier parser: structural problems now import nothing (errors) while deliberate skips only warn; recurring events in another zone are converted, not skipped; DTEND-less events default to 60 min.
+- Evidence: `npm test` 87 pass in 6 time zones; browser run: weekly series expands, 10:00 New York shows as 09:00 Chicago, monthly series warned, bad file keeps existing events.
+- Not re-reviewed after cycle 3 (cap). Accepted: RDATE/EXRULE/THISANDFUTURE warn only; Windows zone names skip with a warning; a timed event with a date-only DTEND fails the whole file.
+- Next: F09 keyboard shortcuts
+
 ### 2026-11-04 — Fresh reviews for F02 and F03 (new rule: every feature needs one)
 - F02 review: 0 must-fix; "shift by N" is re-pack semantics (documented in SPEC.md + test); pinned task overlapping an event/day end accepted as a trade-off. Note: UI uses `planDay`; `extendCurrent` is only exercised by tests.
 - F03 review: 1 must-fix (Infinity/NaN could yield a non-15-min suggestion) + category case/whitespace; fixed with tests.
