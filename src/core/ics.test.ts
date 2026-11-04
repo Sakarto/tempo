@@ -119,11 +119,14 @@ describe('parseIcs', () => {
     expect(r.events).toEqual([])
   })
 
-  it('skips a recurring TZID event whose zone differs from local, with a warning', () => {
+  it('converts a recurring TZID event from another zone instead of skipping it (instance built in its own zone)', () => {
     const other = new Date().getTimezoneOffset() === 0 ? 'Asia/Kolkata' : 'UTC'
     const r = parseIcs(wrap(ev(`SUMMARY:Z\r\nDTSTART;TZID=${other}:20261101T100000\r\nDTEND;TZID=${other}:20261101T110000\r\nRRULE:FREQ=DAILY`)), today, 0, 1440)
-    expect(r.events).toEqual([])
-    expect(r.warnings[0]).toMatch(/different time zone/)
+    const inst = other === 'UTC' ? Date.UTC(2026, 10, 4, 10) : Date.UTC(2026, 10, 4, 4, 30)
+    const d = new Date(inst)
+    expect(r.events).toHaveLength(1)
+    expect(r.events[0].start).toBe(d.getHours() * 60 + d.getMinutes())
+    expect(r.warnings).toEqual([])
   })
 })
 
@@ -152,5 +155,57 @@ describe('parseIcs hardening (from this branch\'s own reviews)', () => {
     const spring = new Date(2026, 2, 8)
     const r = parseIcs(wrap(ev('DTSTART:20260308T080000\r\nDURATION:PT1H')), spring, 0, 1440)
     expect(r.events[0]).toMatchObject({ start: 480, end: 540 })
+  })
+})
+
+describe('parseIcs second-review fixes', () => {
+  const day = new Date(2026, 10, 4)
+  const win = (t: string, d = day) => parseIcs(t, d, 0, 1440)
+  it('RECURRENCE-ID overrides replace that instance; cancelled overrides remove it', () => {
+    const base = ev('UID:s\r\nSUMMARY:Base\r\nDTSTART:20261101T090000\r\nDTEND:20261101T100000\r\nRRULE:FREQ=DAILY')
+    const moved = ev('UID:s\r\nSUMMARY:Moved\r\nRECURRENCE-ID:20261104T090000\r\nDTSTART:20261104T150000\r\nDTEND:20261104T160000')
+    const r = win(wrap(base + moved))
+    expect(r.events.map((e) => [e.title, e.start])).toEqual([['Moved', 15 * 60]])
+    const gone = ev('UID:s\r\nSUMMARY:Gone\r\nSTATUS:CANCELLED\r\nRECURRENCE-ID:20261104T090000\r\nDTSTART:20261104T090000\r\nDTEND:20261104T100000')
+    expect(win(wrap(base + gone)).events).toEqual([])
+    expect(win(wrap(base + gone), new Date(2026, 10, 5)).events).toHaveLength(1)
+  })
+  it('a zero-length event is ignored, not a file-level error; PT0S too', () => {
+    const r = win(wrap(ev('DTSTART:20261104T100000\r\nDTEND:20261104T100000') + ev('UID:n\r\nDTSTART:20261104T110000\r\nDTEND:20261104T120000')))
+    expect(r.errors).toEqual([])
+    expect(r.events.map((e) => e.id)).toEqual(['n'])
+    expect(win(wrap(ev('DTSTART:20261104T100000\r\nDURATION:PT0S'))).events).toEqual([])
+    expect(win(wrap(ev('DTSTART:20261104T100000\r\nDTEND:20261104T090000'))).errors).toHaveLength(1)
+  })
+  it('a recurring event crossing midnight shows its spill-over on the next day', () => {
+    const night = wrap(ev('UID:n\r\nSUMMARY:Night\r\nDTSTART:20261103T230000\r\nDTEND:20261104T010000\r\nRRULE:FREQ=DAILY'))
+    expect(win(night).events.map((e) => [e.start, e.end])).toEqual([[0, 60], [1380, 1440]])
+  })
+  it('a recurring TZID series keeps wall-clock time in its own zone across DST', () => {
+    const lon = wrap(ev('SUMMARY:L\r\nDTSTART;TZID=Europe/London:20260105T090000\r\nDTEND;TZID=Europe/London:20260105T100000\r\nRRULE:FREQ=WEEKLY;BYDAY=MO'))
+    const expected = new Date(Date.UTC(2026, 6, 6, 8)) // 09:00 BST = 08:00 UTC
+    const r = parseIcs(lon, new Date(expected.getFullYear(), expected.getMonth(), expected.getDate()), 0, 1440)
+    expect(r.events[0].start).toBe(expected.getHours() * 60 + expected.getMinutes())
+  })
+  it('a UTC series keeps its UTC time across DST', () => {
+    const z = wrap(ev('SUMMARY:Z\r\nDTSTART:20260105T140000Z\r\nDTEND:20260105T150000Z\r\nRRULE:FREQ=WEEKLY;BYDAY=MO'))
+    const expected = new Date(Date.UTC(2026, 6, 6, 14))
+    const r = parseIcs(z, new Date(expected.getFullYear(), expected.getMonth(), expected.getDate()), 0, 1440)
+    expect(r.events[0].start).toBe(expected.getHours() * 60 + expected.getMinutes())
+  })
+  it('CR-only line endings, old series, quoted TZID and WKST are handled', () => {
+    const cr = wrap(ev('SUMMARY:C\r\nDTSTART:20261104T100000\r\nDTEND:20261104T110000')).replace(/\r\n/g, '\r')
+    expect(win(cr).events).toHaveLength(1)
+    const old = wrap(ev('SUMMARY:O\r\nDTSTART:20140101T090000\r\nDTEND:20140101T100000\r\nRRULE:FREQ=WEEKLY;BYDAY=WE'))
+    expect(win(old).events).toHaveLength(1) // 2026-11-04 is a Wednesday
+    const q = wrap(ev('SUMMARY:Q\r\nDTSTART;TZID="UTC":20261104T100000\r\nDTEND;TZID="UTC":20261104T110000'))
+    expect(win(q).warnings).toEqual([])
+    const wk = wrap(ev('SUMMARY:W\r\nDTSTART:20261028T090000\r\nDTEND:20261028T100000\r\nRRULE:FREQ=WEEKLY;INTERVAL=2;WKST=SU;BYDAY=SU,WE'))
+    expect(win(wk, new Date(2026, 10, 8)).events).toHaveLength(1)
+  })
+  it('unsupported rule parts are skipped with a warning instead of showing wrongly', () => {
+    const r = win(wrap(ev('SUMMARY:B\r\nDTSTART:20261001T090000\r\nDTEND:20261001T100000\r\nRRULE:FREQ=DAILY;BYMONTHDAY=1')))
+    expect(r.events).toEqual([])
+    expect(r.warnings[0]).toMatch(/can't read/)
   })
 })
