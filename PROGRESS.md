@@ -3,7 +3,7 @@
 Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "Earlier" as one line each.
 
 ## Current state
-- Passing features: 9/13 · Next up: F10 · Blocked: none
+- Passing features: 10/13 · Next up: F11 · Blocked: none
 - Start: `./init.sh` · Baseline at last run: tests ✅ build ✅ lint ✅ types ✅
 
 ## Assumptions (owner can overrule)
@@ -12,6 +12,13 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-04 — F10: Stats page + suggested estimate
+- Did: `src/core/stats.ts`, `src/ui/Stats.tsx`, suggestion in `src/ui/Plan.tsx`, Today/Stats tabs in `src/App.tsx`
+- Evidence: `npm test` 108 pass; Playwright: 3 study tasks each run over by 15 min give ratio ×1.5, streak 1, bar 135 min; suggestion "90 min" for a 60 min estimate, accept/override, accepted run logs the raw estimate (stats stay at avg estimate 30, ratio ×1.5); 375px with all columns visible; persists across reload
+- Review: 1 fresh cycle; 2 must-fix (accepted suggestions polluted the learning data; select showed the wrong value after accepting) + 3 should-fix (quadratic grouping, "needs N more" with zero-minute sessions, copy for ratios below 1): all fixed with tests and re-verified in the browser
+- Decisions: a task finished without ever starting logs 0 minutes and does not count toward the streak (a started session counts at least 1 minute); suggestions snap to 15 min, so a non-standard block like 45 appears in the select when accepted
+- Next: F11 export + CSV import
+
 ### 2026-11-04 — F09: Keyboard shortcuts
 - Did: `src/ui/keys.ts` (pure `shortcutFor`), key handler + hint in `src/ui/Focus.tsx`. Space start/pause, D done, E +15; Escape leaves a field.
 - Evidence: `npm test` 95 pass; Playwright keyboard-only flow (type tasks, Escape, Space/pause/E/D, no firing while typing, Ctrl+D ignored, Cyrillic layout), no console errors; evidence/f09-keyboard.png (untracked)

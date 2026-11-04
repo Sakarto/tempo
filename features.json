@@ -117,7 +117,7 @@
         "New task in that category shows the suggestion with accept/override",
         "Streak counts consecutive days with a session"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F11",

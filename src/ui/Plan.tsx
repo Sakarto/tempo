@@ -21,16 +21,21 @@ export function Plan({ plan, sessions, importErrors, onAdd, onRemove, onImport }
   const [category, setCategory] = useState('')
   const [duration, setDuration] = useState(30)
   const [reward, setReward] = useState('')
-  const [accepted, setAccepted] = useState<number | null>(null) // an accepted suggestion is already adjusted; don't adjust it again
+  // An accepted suggestion is already adjusted: remember it (so we don't adjust again) and the user's own estimate (so learning stays honest).
+  const [accepted, setAccepted] = useState<{ value: number; raw: number } | null>(null)
 
   const suggestion = category.trim() ? suggestEstimate(sessions, category, duration) : null
-  const showSuggestion = suggestion !== null && suggestion !== duration && duration !== accepted
-  const options = suggestion !== null && !BLOCKS.includes(suggestion) ? [...BLOCKS, suggestion].sort((a, b) => a - b) : BLOCKS
+  const showSuggestion = suggestion !== null && suggestion !== duration && duration !== accepted?.value
+  const options = [...new Set([...BLOCKS, duration])].sort((a, b) => a - b) // the selected value must always be an option
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
     if (!title.trim()) return
-    onAdd({ title: title.trim(), category: category.trim() || 'general', duration, ...(reward.trim() ? { reward: reward.trim() } : {}) })
+    onAdd({
+      title: title.trim(), category: category.trim() || 'general', duration,
+      ...(accepted && accepted.value === duration ? { rawEstimate: accepted.raw } : {}),
+      ...(reward.trim() ? { reward: reward.trim() } : {}),
+    })
     setTitle(''); setReward(''); setAccepted(null)
   }
 
@@ -52,8 +57,8 @@ export function Plan({ plan, sessions, importErrors, onAdd, onRemove, onImport }
         </label>
         {showSuggestion && (
           <p className="suggest" role="status">
-            Your <strong>{category.trim()}</strong> tasks usually take longer than planned: suggest <strong>{suggestion} min</strong>.
-            <button type="button" className="link" onClick={() => { setDuration(suggestion); setAccepted(suggestion) }}>Use {suggestion} min</button>
+            Your <strong>{category.trim()}</strong> tasks usually take {suggestion > duration ? 'longer' : 'less time'} than planned: suggest <strong>{suggestion} min</strong>.
+            <button type="button" className="link" onClick={() => { setAccepted({ value: suggestion, raw: duration }); setDuration(suggestion) }}>Use {suggestion} min</button>
           </p>
         )}
         <label>Reward (optional)<input value={reward} onChange={(e) => setReward(e.target.value)} placeholder="10 min YouTube" /></label>

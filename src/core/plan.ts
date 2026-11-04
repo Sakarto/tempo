@@ -5,6 +5,8 @@ export const DEFAULT_DAY: DayWindow = { start: 9 * 60, end: 22 * 60 }
 export interface PlanTask extends Task {
   category: string
   reward?: string
+  /** The user's own estimate when they accepted an adjusted suggestion; logged so learning compares actual to it, not to the adjusted value. */
+  rawEstimate?: number
   /** Minutes added at check-ins; the original estimate is duration - extended. */
   extended?: number
   /** Minute of day the running task first started; pins it in place while the rest re-flows. */

@@ -1,11 +1,12 @@
+import { useMemo } from 'react'
 import { dateOf } from '../core/day'
 import { categoryStats, focusMinutesByDay, streakDays, type DatedSession } from '../core/stats'
 
 interface Props { sessions: DatedSession[]; nowMs: number }
 
 export function Stats({ sessions, nowMs }: Props) {
-  const cats = categoryStats(sessions)
-  const days = focusMinutesByDay(sessions).slice(-14)
+  const cats = useMemo(() => categoryStats(sessions), [sessions])
+  const days = useMemo(() => focusMinutesByDay(sessions).slice(-14), [sessions])
   const max = Math.max(1, ...days.map((d) => d.minutes))
   const streak = streakDays(sessions, dateOf(nowMs))
 
@@ -26,7 +27,7 @@ export function Stats({ sessions, nowMs }: Props) {
             {cats.map((c) => (
               <tr key={c.category}>
                 <td>{c.category}</td><td>{c.sessions}</td><td>{c.avgEstimate} min</td><td>{c.avgActual} min</td>
-                <td>{c.ratio === null ? <span className="muted">needs {3 - c.sessions} more</span> : `×${Math.round(c.ratio * 100) / 100}`}</td>
+                <td>{c.ratio === null ? <span className="muted">needs {3 - c.usable} more</span> : `×${Math.round(c.ratio * 100) / 100}`}</td>
               </tr>
             ))}
           </tbody>

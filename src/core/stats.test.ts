@@ -7,8 +7,8 @@ describe('categoryStats', () => {
   test('averages and the median ratio per category, ratio only from 3 sessions', () => {
     const log = [s('2026-11-01', 'study', 60, 90), s('2026-11-02', 'study', 30, 60), s('2026-11-03', 'study', 60, 60), s('2026-11-03', 'gym', 60, 55)]
     const r = categoryStats(log)
-    expect(r.find((c) => c.category === 'study')).toEqual({ category: 'study', sessions: 3, avgEstimate: 50, avgActual: 70, ratio: 1.5 })
-    expect(r.find((c) => c.category === 'gym')).toEqual({ category: 'gym', sessions: 1, avgEstimate: 60, avgActual: 55, ratio: null })
+    expect(r.find((c) => c.category === 'study')).toEqual({ category: 'study', sessions: 3, usable: 3, avgEstimate: 50, avgActual: 70, ratio: 1.5 })
+    expect(r.find((c) => c.category === 'gym')).toEqual({ category: 'gym', sessions: 1, usable: 1, avgEstimate: 60, avgActual: 55, ratio: null })
   })
 
   test('category names are merged ignoring case/whitespace and sorted by session count', () => {
@@ -19,6 +19,19 @@ describe('categoryStats', () => {
   test('empty log and zero-length sessions are handled', () => {
     expect(categoryStats([])).toEqual([])
     expect(categoryStats([s('2026-11-01', 'x', 30, 0)])[0]).toMatchObject({ sessions: 1, avgActual: 0, ratio: null })
+  })
+})
+
+describe('categoryStats usable count and speed', () => {
+  test('usable counts only sessions that can feed the learning model', () => {
+    const log = [s('2026-11-01', 'a', 30, 0), s('2026-11-01', 'a', 30, 30), s('2026-11-01', 'a', 30, 40)]
+    expect(categoryStats(log)[0]).toMatchObject({ sessions: 3, usable: 2, ratio: null })
+  })
+  test('100k sessions in one category are grouped in linear time', () => {
+    const log = Array.from({ length: 100_000 }, (_, i) => s('2026-11-01', 'one', 30, 20 + (i % 20)))
+    const t0 = Date.now()
+    expect(categoryStats(log)[0].sessions).toBe(100_000)
+    expect(Date.now() - t0).toBeLessThan(2000)
   })
 })
 

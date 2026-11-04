@@ -61,7 +61,9 @@ export function finish(s: DayState, nowMs: number): { state: DayState; reward?: 
   const actualMs = spentMs(head, s.timer, nowMs)
   const session: Session = {
     id: crypto.randomUUID(), date: dateOf(nowMs), task: head.title, category: head.category,
-    estimate: head.duration - extended, actual: Math.round(actualMs / 60_000), extended,
+    estimate: head.rawEstimate ?? head.duration - extended,
+    actual: actualMs > 0 ? Math.max(1, Math.round(actualMs / 60_000)) : 0, // a started session counts at least a minute
+    extended,
     distracted: false, energy: null, note: '',
   }
   return { state: { tasks: s.tasks.slice(1), sessions: [...s.sessions, session], timer: null }, reward: head.reward }
