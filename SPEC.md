@@ -37,3 +37,4 @@ no extra dependency), PWA via a hand-written service worker + manifest (no plugi
 - Times are minutes since local midnight within one day; "tomorrow" push is represented by overflow in v1.
 - Priority order = user's list order (lower number first); ties keep insertion order.
 - Research claims (planning fallacy, implementation intentions, micro-breaks) are cited in IDEA.md; not hardcoded in code.
+- "Later tasks shift by N" (F02) means re-packing after the extended task's new end; slack before a later task is not preserved. The running task stays pinned: it may overlap a fixed event or run past the day end through extensions, but is never shrunk (run 2026-11-03, owner can overrule).

@@ -12,6 +12,11 @@ Newest run first. Keep each run under ~15 lines; roll runs older than ~10 into "
 - features.json F01 is a pure-logic feature, so evidence is unit tests + independent black-box review, not a browser run (2026-11-03)
 
 ## Runs
+### 2026-11-04 — Fresh reviews for F02 and F03 (new rule: every feature needs one)
+- F02 review: 0 must-fix; "shift by N" is re-pack semantics (documented in SPEC.md + test); pinned task overlapping an event/day end accepted as a trade-off. Note: UI uses `planDay`; `extendCurrent` is only exercised by tests.
+- F03 review: 1 must-fix (Infinity/NaN could yield a non-15-min suggestion) + category case/whitespace; fixed with tests.
+- Found a parallel run (PR #7, branch claude/amazing-lamport-far17c, own F01-F03 where F03 = .ics import); awaiting owner choice of which line to keep.
+
 ### 2026-11-03 — F06+F07+F08: plan screen, focus timer, check-in
 - Did: `src/core/{plan,day}.ts`, `src/ui/*`, `src/App.tsx`; scheduler made generic
 - Evidence: `npm test` 67 pass (core coverage 98%); Playwright in real Chromium with a fake clock (add 5 tasks + .ics, start/pause, reload mid-session, check-in, +15 re-flow, Done+reward, Stuck, 375px, no console errors); screenshots in evidence/ (untracked)
