@@ -31,7 +31,7 @@ it('plans tasks around an event, shows overflow, and survives remount', async ()
   unmount()
   render(<App />)
   expect(await screen.findByText(/09:00–10:00 Essay/)).toBeInTheDocument()
-  expect(screen.getByText(/Reading · 30 min/)).toBeInTheDocument()
+  expect(screen.getByText(/Reading · general · 30 min/)).toBeInTheDocument()
 })
 
 it('rejects an empty title and an event that ends before it starts', async () => {
@@ -45,4 +45,24 @@ it('rejects an empty title and an event that ends before it starts', async () =>
   await u.type(within(ev).getByLabelText('Event end'), '09:00')
   await u.click(within(ev).getByRole('button', { name: 'Add event' }))
   expect(screen.getByRole('alert')).toHaveTextContent('end after')
+})
+
+it('rejects events outside the day window', async () => {
+  const u = userEvent.setup()
+  render(<App />)
+  const ev = await screen.findByRole('form', { name: 'Add event' })
+  await u.clear(within(ev).getByLabelText('Event start'))
+  await u.type(within(ev).getByLabelText('Event start'), '06:00')
+  await u.clear(within(ev).getByLabelText('Event end'))
+  await u.type(within(ev).getByLabelText('Event end'), '08:00')
+  await u.click(within(ev).getByRole('button', { name: 'Add event' }))
+  expect(screen.getByRole('alert')).toHaveTextContent('within 09:00')
+})
+
+it('tells the user when IndexedDB cannot be loaded', async () => {
+  const orig = indexedDB.open.bind(indexedDB)
+  indexedDB.open = () => { throw new Error('blocked') }
+  render(<App />)
+  expect(await screen.findByRole('alert')).toHaveTextContent('Could not load')
+  indexedDB.open = orig
 })

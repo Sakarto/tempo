@@ -22,7 +22,7 @@
         "Timeline shows blocks in order and an overflow list",
         "Reload: everything still there"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F03",
