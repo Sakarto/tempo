@@ -105,7 +105,7 @@
         "D completes the task",
         "E extends 15 min"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F10",
@@ -117,7 +117,7 @@
         "New task in that category shows the suggestion with accept/override",
         "Streak counts consecutive days with a session"
       ],
-      "passes": false
+      "passes": true
     },
     {
       "id": "F11",

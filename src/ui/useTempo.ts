@@ -65,13 +65,13 @@ export function useTempo() {
 
   const importIcs = useCallback(async (file: File) => {
     const today = dateOf(Date.now())
-    const result = parseIcs(await file.text(), today)
+    const result = parseIcs(await file.text(), new Date(), 0, 24 * 60)
     if (result.events.length === 0) {
-      // Never wipe saved events because of a bad or wrong-day file.
-      setImportErrors([...result.errors, 'No events for today were found in that file; kept your existing events.'])
+      // Never wipe saved events because of a bad or wrong-day file (errors also mean nothing was imported).
+      setImportErrors([...result.errors, ...result.warnings, 'No events for today were imported; kept your existing events.'])
       return
     }
-    setImportErrors(result.errors)
+    setImportErrors(result.warnings)
     setEvents(result.events)
     const opened = db.current
     if (!opened) return

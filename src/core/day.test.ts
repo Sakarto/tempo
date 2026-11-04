@@ -86,4 +86,16 @@ describe('day transitions', () => {
     const idle = empty([t('a', 30)])
     expect(dropStale(idle, '2026-11-04')).toBe(idle)
   })
+
+  test('an accepted (adjusted) estimate logs the user\'s own raw estimate so learning is not polluted', () => {
+    const s = toggleTimer(empty([t('a', 45, { rawEstimate: 30 })]), at(10, 0))
+    const r = finish(s, at(10, 45))
+    expect(r.state.sessions[0]).toMatchObject({ estimate: 30, actual: 45, extended: 0 })
+  })
+
+  test('a session that ran under a minute still counts as one minute; never-started stays 0', () => {
+    const s = toggleTimer(empty([t('a', 30)]), at(10, 0))
+    expect(finish(s, at(10, 0) + 20_000).state.sessions[0].actual).toBe(1)
+    expect(finish(empty([t('a', 30)]), at(10, 0)).state.sessions[0].actual).toBe(0)
+  })
 })
